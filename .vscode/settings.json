@@ -4,6 +4,12 @@
     "packages/tauri/Cargo.toml",
     "apps/readest-app/src-tauri/Cargo.toml"
   ],
+  "rust-analyzer.check.command": "check",
+  "rust-analyzer.check.extraArgs": ["-j", "2"],
+  "rust-analyzer.check.allFeatures": false,
+  "rust-analyzer.check.features": [],
+  "rust-analyzer.check.targets": ["x86_64-unknown-linux-gnu"],
+  "rust-analyzer.procMacro.enable": false,
   // "editor.formatOnSave": true, // uncomment to add format on save
   "typescript.inlayHints.parameterNames.enabled": "all",
   "typescript.inlayHints.variableTypes.enabled": true,
@@ -13,19 +19,4 @@
   "javascript.validate.enable": false,
   "javascript.format.enable": false,
   "typescript.format.enable": false,
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
-  "editor.codeActionsOnSave": {
-    "source.fixAll.eslint": "explicit"
-  },
-  "[css]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
-  "[typescript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
-  "[typescriptreact]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
-  "prettier.requireConfig": true,
-  "prettier.documentSelectors": ["**/*.{js,jsx,ts,tsx,css,json,md,html,yml}"]
 }

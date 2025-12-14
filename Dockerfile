@@ -1,40 +1,65 @@
+# --- Base image ---
 FROM docker.io/node:22-slim AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
-RUN corepack prepare pnpm@10.29.3 --activate
+RUN corepack enable && corepack prepare pnpm@10.29.3 --activate
 WORKDIR /app
+
+# --- Install dependencies only for web app ---
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/readest-app/package.json ./apps/readest-app/
 COPY patches/ ./patches/
 COPY packages/ ./packages/
-
-FROM base AS dependencies
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
-RUN pnpm --filter @readest/readest-app setup-vendors
 
-FROM dependencies AS development-stage
-COPY . .
+
+# --- Copy source and build web app ---
+COPY apps/readest-app ./apps/readest-app
 WORKDIR /app/apps/readest-app
-EXPOSE 3000
-ENTRYPOINT ["pnpm", "dev-web", "-H", "0.0.0.0"]
+COPY apps/readest-app/.env.web .env.web
+COPY apps/readest-app/.env.local.example .env.local.example
 
-FROM base AS build
-ARG NEXT_PUBLIC_SUPABASE_URL
-ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
-ARG NEXT_PUBLIC_APP_PLATFORM
-ARG NEXT_PUBLIC_API_BASE_URL
-ARG NEXT_PUBLIC_OBJECT_STORAGE_TYPE
-ARG NEXT_PUBLIC_STORAGE_FIXED_QUOTA
-ARG NEXT_PUBLIC_TRANSLATION_FIXED_QUOTA
-COPY --from=dependencies /app/node_modules /app/node_modules
-COPY --from=dependencies /app/apps/readest-app/node_modules /app/apps/readest-app/node_modules
-COPY --from=dependencies /app/apps/readest-app/public/vendor /app/apps/readest-app/public/vendor
-COPY --from=dependencies /app/packages/foliate-js/node_modules /app/packages/foliate-js/node_modules
-COPY . .
+# Prepare .env.local with placeholders for runtime injection
+RUN env_source=/app/apps/readest-app/.env.local.example; \
+	env_target=/app/apps/readest-app/.env.local; \
+	awk -F= '/^NEXT_PUBLIC_/ && $1 != "" { printf "%s=\\$%s\n", $1, $1 }' $env_source >> $env_target && \
+	# Replace placeholder to avoid build errors
+	sed -i 's|^NEXT_PUBLIC_SUPABASE_URL=.*$|NEXT_PUBLIC_SUPABASE_URL=https://your-supabase-url.com|' $env_target
+
+ENV CI="true"
+RUN pnpm install
+RUN pnpm --filter=@readest/readest-app setup-vendors && \
+	pnpm --filter=@readest/readest-app build-web
+
+# Replace placeholder in built JS files with runtime env variable
+RUN find /app/apps/readest-app/.next -name "*.js" -type f -exec sed -i "s|https://your-supabase-url.com|\$NEXT_PUBLIC_SUPABASE_URL|g" {} +
+
+RUN rm -rf /app/apps/readest-app/.next/cache && \
+	pnpm --filter=@readest/readest-app install dotenv-cli @next/bundle-analyzer -P
+
+# --- Production image ---
+FROM base AS production
+ENV NODE_ENV=production
+WORKDIR /app
+
+COPY --from=base /app/apps/readest-app/package.json /app/apps/readest-app/package.json
+COPY --from=base /app/package.json /app/package.json
+COPY --from=base /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
+COPY --from=base /app/apps/readest-app/.next /app/apps/readest-app/.next
+COPY --from=base /app/apps/readest-app/public /app/apps/readest-app/public
+
+ENV CI="true"
+RUN pnpm fetch --prod && pnpm install -r --offline --prod && \
+	# Install gettext for envsubst
+	apt-get update && apt-get install -y gettext-base && \
+	rm -rf /var/lib/apt/lists/*
+
+    # Add at the end to leverage cache
+COPY ./docker-entrypoint.sh /docker-entrypoint.sh
+
+RUN chmod +x /docker-entrypoint.sh && \
+	rm -rf packages/tauri* apps/readest-app/src-tauri
+
 WORKDIR /app/apps/readest-app
-RUN pnpm build-web
-
-FROM build as production-stage
-ENTRYPOINT ["pnpm", "start-web", "-H", "0.0.0.0"]
+ENTRYPOINT ["/docker-entrypoint.sh"]
 EXPOSE 3000

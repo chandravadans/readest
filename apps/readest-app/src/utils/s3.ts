@@ -48,12 +48,13 @@ export const s3Storage = {
     expiresIn: number,
   ) => {
     const signableHeaders = new Set<string>();
-    signableHeaders.add('content-length');
+    signableHeaders.add('host');
+    console.log('Content length:' + contentLength);
     const putCommand = new PutObjectCommand({
       Bucket: bucketName,
       Key: fileKey,
       ContentLength: contentLength,
-    });
+    })
 
     const uploadUrl = await getSignedUrl(s3Client, putCommand, {
       expiresIn: expiresIn,
