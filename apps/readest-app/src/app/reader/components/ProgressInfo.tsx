@@ -139,7 +139,7 @@ const ProgressInfoView: React.FC<PageInfoProps> = ({
       style={
         isVertical
           ? {
-              bottom: `${contentInsets.bottom * 1.5}px`,
+              bottom: `${(contentInsets.bottom - gridInsets.bottom) * 1.5}px`,
               left: showDoubleBorder
                 ? `calc(${contentInsets.left}px)`
                 : `calc(${Math.max(0, contentInsets.left - 32)}px)`,
@@ -147,8 +147,8 @@ const ProgressInfoView: React.FC<PageInfoProps> = ({
               height: `calc(100% - ${((contentInsets.top + contentInsets.bottom) / 2) * 3}px)`,
             }
           : {
-              paddingInlineStart: `calc(${horizontalGap / 2}% + ${contentInsets.left}px)`,
-              paddingInlineEnd: `calc(${horizontalGap / 2}% + ${contentInsets.right}px)`,
+              paddingInlineStart: `calc(${horizontalGap / 2}% + ${contentInsets.left / 2}px)`,
+              paddingInlineEnd: `calc(${horizontalGap / 2}% + ${contentInsets.right / 2}px)`,
               paddingBottom: appService?.hasSafeAreaInset ? `${gridInsets.bottom * 0.33}px` : 0,
             }
       }

@@ -210,6 +210,26 @@ export interface ScreenConfig {
   screenOrientation: 'auto' | 'portrait' | 'landscape';
 }
 
+export type ProofreadScope = 'selection' | 'book' | 'library';
+
+export interface ProofreadRule {
+  id: string;
+  scope: ProofreadScope;
+  pattern: string;
+  replacement: string;
+  cfi?: string;
+  sectionHref?: string;
+  enabled: boolean;
+  isRegex: boolean;
+  order: number; // Lower numbers apply first
+  wholeWord?: boolean; // Match whole words only (uses \b word boundaries)
+  caseSensitive?: boolean; // Case-sensitive matching (default true)
+}
+
+export interface ProofreadRulesConfig {
+  proofreadRules?: ProofreadRule[];
+}
+
 export interface ViewSettings
   extends BookLayout,
     BookStyle,
@@ -218,7 +238,8 @@ export interface ViewSettings
     ViewConfig,
     TTSConfig,
     TranslatorConfig,
-    ScreenConfig {}
+    ScreenConfig,
+    ProofreadRulesConfig {}
 
 export interface BookProgress {
   location: string;

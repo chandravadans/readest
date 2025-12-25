@@ -14,6 +14,7 @@ import { isWebAppPlatform } from '@/services/environment';
 import { eventDispatcher } from '@/utils/event';
 import { DOWNLOAD_READEST_URL } from '@/services/constants';
 import { setKOSyncSettingsWindowVisible } from '@/app/reader/components/KOSyncSettings';
+import { setProofreadRulesVisibility } from '@/app/reader/components/ProofreadRules';
 import { FIXED_LAYOUT_FORMATS } from '@/types/book';
 import useBooksManager from '../../hooks/useBooksManager';
 import MenuItem from '@/components/MenuItem';
@@ -76,6 +77,10 @@ const BookMenu: React.FC<BookMenuProps> = ({ menuClassName, setIsDropdownOpen })
   };
   const showKoSyncSettingsWindow = () => {
     setKOSyncSettingsWindowVisible(true);
+    setIsDropdownOpen?.(false);
+  };
+  const showProofreadRulesWindow = () => {
+    setProofreadRulesVisibility(true);
     setIsDropdownOpen?.(false);
   };
   const handlePullKOSync = () => {
@@ -146,6 +151,8 @@ const BookMenu: React.FC<BookMenuProps> = ({ menuClassName, setIsDropdownOpen })
           <MenuItem label={_('Pull Progress')} onClick={handlePullKOSync} />
         </>
       )}
+      <hr className='border-base-200 my-1' />
+      <MenuItem label={_('Proofread')} onClick={showProofreadRulesWindow} />
       <hr className='border-base-200 my-1' />
       <MenuItem label={_('Export Annotations')} onClick={handleExportAnnotations} />
       <MenuItem

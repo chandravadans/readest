@@ -8,6 +8,7 @@ export type TransformContext = {
   width?: number;
   height?: number;
   content: string;
+  sectionHref?: string;
   transformers: string[];
   reversePunctuationTransform?: boolean;
 };

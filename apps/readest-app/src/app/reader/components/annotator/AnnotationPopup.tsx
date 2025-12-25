@@ -15,6 +15,7 @@ interface AnnotationPopupProps {
     Icon: React.ElementType;
     onClick: () => void;
     disabled?: boolean;
+    visible?: boolean;
   }>;
   position: Position;
   trianglePosition: Position;
@@ -51,6 +52,7 @@ const AnnotationPopup: React.FC<AnnotationPopupProps> = ({
       <Popup
         width={isVertical ? popupHeight : popupWidth}
         height={isVertical ? popupWidth : popupHeight}
+        minHeight={isVertical ? popupWidth : popupHeight}
         position={position}
         trianglePosition={trianglePosition}
         className='selection-popup bg-gray-600 text-white'
@@ -59,23 +61,24 @@ const AnnotationPopup: React.FC<AnnotationPopupProps> = ({
       >
         <div
           className={clsx(
-            'selection-buttons flex items-center justify-between p-2',
-            isVertical ? 'flex-col' : 'flex-row',
+            'selection-buttons flex h-full w-full items-center justify-between p-2',
+            isVertical ? 'flex-col overflow-y-auto' : 'flex-row overflow-x-auto',
           )}
-          style={{
-            height: isVertical ? popupWidth : popupHeight,
-          }}
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
-          {buttons.map((button, index) => (
-            <PopupButton
-              key={index}
-              showTooltip={!highlightOptionsVisible}
-              tooltipText={button.tooltipText}
-              Icon={button.Icon}
-              onClick={button.onClick}
-              disabled={button.disabled}
-            />
-          ))}
+          {buttons.map((button, index) => {
+            if (button.visible === false) return null;
+            return (
+              <PopupButton
+                key={index}
+                showTooltip={!highlightOptionsVisible}
+                tooltipText={button.tooltipText}
+                Icon={button.Icon}
+                onClick={button.onClick}
+                disabled={button.disabled}
+              />
+            );
+          })}
         </div>
       </Popup>
       {highlightOptionsVisible && (
