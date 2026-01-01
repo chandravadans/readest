@@ -55,7 +55,6 @@ export const s3Storage = {
     const putCommand = new PutObjectCommand({
       Bucket: bucketName,
       Key: fileKey,
-      ContentLength: contentLength,
       // optional:  to ensure that no headers are enforced - see https://git.deuxfleurs.fr/Deuxfleurs/garage/issues/1236
       ChecksumAlgorithm: undefined,
     });
