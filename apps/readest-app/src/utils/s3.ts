@@ -15,6 +15,8 @@ export const s3Client = new S3Client({
     accessKeyId: S3_ACCESS_KEY_ID,
     secretAccessKey: S3_SECRET_ACCESS_KEY,
   },
+  requestChecksumCalculation: "WHEN_REQUIRED", // https://git.deuxfleurs.fr/Deuxfleurs/garage/issues/1236
+  responseChecksumValidation: "WHEN_REQUIRED",
 });
 
 
@@ -60,6 +62,8 @@ export const s3Storage = {
       Bucket: bucketName,
       Key: fileKey,
       ContentLength: contentLength,
+      // optional:  to ensure that no headers are enforced - see https://git.deuxfleurs.fr/Deuxfleurs/garage/issues/1236
+      ChecksumAlgorithm: undefined,
     });
 
     const uploadUrl = await getSignedUrl(s3Client, putCommand, {
