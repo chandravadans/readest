@@ -1,0 +1,6 @@
+.git
+node_modules
+apps/readest-app/.next/cache
+apps/readest-app/src-tauri
+packages/*/node_modules
+

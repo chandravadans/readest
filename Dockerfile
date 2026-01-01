@@ -1,18 +1,17 @@
-FROM alpine/git AS source
-WORKDIR /app
-COPY . /app
-
 FROM node:22-slim AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable && corepack prepare pnpm@latest-10 --activate
+RUN corepack enable && corepack prepare pnpm@10.24.0 --activate
 
 FROM base AS build
 WORKDIR /app
 # Uncomment the following line to increase the Node.js memory limit (if needed)
 ENV NODE_OPTIONS="--max-old-space-size=6144"
 
-COPY --from=source /app .
+# Copy only files needed for env generation + build
+COPY apps/readest-app ./apps/readest-app
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY packages/foliate-js ./packages/foliate-js
 # Copy the variables starting with `NEXT_PUBLIC_` from
 # `/app/apps/readest-app/.env.local.example` to /app/apps/readest-app/.env.local,
 # and set their values as environment variable placeholders in the format `KEY=\$KEY`.
@@ -38,8 +37,8 @@ FROM base
 ENV NODE_ENV=production
 WORKDIR /app
 
-COPY --from=source /app .
 COPY --from=build /app/apps/readest-app/package.json /app/apps/readest-app/package.json
+COPY --from=build /app/package.json /app/package.json
 COPY --from=build /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
 COPY --from=build /app/apps/readest-app/.next /app/apps/readest-app/.next
 COPY --from=build /app/apps/readest-app/public /app/apps/readest-app/public
