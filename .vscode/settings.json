@@ -4,6 +4,12 @@
     "packages/tauri/Cargo.toml",
     "apps/readest-app/src-tauri/Cargo.toml"
   ],
+  "rust-analyzer.check.command": "check",
+  "rust-analyzer.check.extraArgs": ["-j", "2"],
+  "rust-analyzer.check.allFeatures": false,
+  "rust-analyzer.check.features": [],
+  "rust-analyzer.check.targets": ["x86_64-unknown-linux-gnu"],
+  "rust-analyzer.procMacro.enable": false,
   // "editor.formatOnSave": true, // uncomment to add format on save
   "typescript.inlayHints.parameterNames.enabled": "all",
   "typescript.inlayHints.variableTypes.enabled": true,
