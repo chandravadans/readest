@@ -19,7 +19,6 @@ export const s3Client = new S3Client({
   responseChecksumValidation: "WHEN_REQUIRED",
 });
 
-
 export const s3Storage = {
   getClient: () => {
     return new S3Client({
@@ -33,12 +32,7 @@ export const s3Storage = {
     });
   },
 
-  getDownloadSignedUrl: async (
-    bucketName: string,
-    fileKey: string,
-    expiresIn: number,
-  ) => {
-
+  getDownloadSignedUrl: async (bucketName: string, fileKey: string, expiresIn: number) => {
     const getCommand = new GetObjectCommand({
       Bucket: bucketName,
       Key: fileKey,
@@ -55,7 +49,6 @@ export const s3Storage = {
     contentLength: number,
     expiresIn: number,
   ) => {
-
     const signableHeaders = new Set<string>();
     signableHeaders.add('host');
     console.log("Content length:" + contentLength)
