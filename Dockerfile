@@ -22,6 +22,7 @@ RUN env_source=/app/apps/readest-app/.env.local.example; \
     # Replace `NEXT_PUBLIC_SUPABASE_URL` to `https://your-supabase-url.com` placeholder for avoid `Invalid URL` error during build
     sed -i 's|^NEXT_PUBLIC_SUPABASE_URL=.*$|NEXT_PUBLIC_SUPABASE_URL=https://your-supabase-url.com|' $env_target
 
+<<<<<<< HEAD
 ENV CI="true"
 RUN pnpm install
 RUN pnpm --filter=@readest/readest-app setup-pdfjs && \
@@ -32,6 +33,9 @@ RUN find /app/apps/readest-app/.next -name "*.js" -exec sed -i "s|https://your-s
 
 RUN rm -rf /app/apps/readest-app/.next/cache && \
     pnpm --filter=@readest/readest-app install dotenv-cli @next/bundle-analyzer -P
+=======
+COPY . /app
+>>>>>>> 4bd7cfe5 (chore: fix dockerfile (#3067))
 
 FROM base
 ENV NODE_ENV=production
@@ -43,6 +47,7 @@ COPY --from=build /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
 COPY --from=build /app/apps/readest-app/.next /app/apps/readest-app/.next
 COPY --from=build /app/apps/readest-app/public /app/apps/readest-app/public
 
+<<<<<<< HEAD
 ENV CI="true"
 RUN pnpm fetch --prod && pnpm install -r --offline --prod && \
     \
@@ -55,6 +60,9 @@ COPY ./docker-entrypoint.sh /docker-entrypoint.sh
 
 RUN chmod +x /docker-entrypoint.sh && \
     rm -rf packages/tauri* apps/readest-app/src-tauri
+=======
+RUN pnpm --filter @readest/readest-app setup-vendors
+>>>>>>> 4bd7cfe5 (chore: fix dockerfile (#3067))
 
 WORKDIR /app/apps/readest-app
 ENTRYPOINT ["/docker-entrypoint.sh"]

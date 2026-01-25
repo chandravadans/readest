@@ -1,6 +1,33 @@
-.git
+# Dependencies
 node_modules
-apps/readest-app/.next/cache
-apps/readest-app/src-tauri
-packages/*/node_modules
+**/node_modules
+
+# Rust build artifacts
+target
+**/target
+
+# Git
+.git
+.gitignore
+
+# Build outputs
+dist
+**/dist
+.next
+**/.next
+out
+**/out
+
+# IDE
+.idea
+.vscode
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
 
