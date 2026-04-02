@@ -7,5 +7,5 @@ export const getStorageType = (): ObjectStorageType => {
   } else {
     return 'r2';
   }*/
- return 's3';
+  return 's3';
 };
