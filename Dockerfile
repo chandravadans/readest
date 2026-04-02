@@ -12,6 +12,7 @@ ENV NODE_OPTIONS="--max-old-space-size=6144"
 COPY apps/readest-app ./apps/readest-app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY packages/foliate-js ./packages/foliate-js
+COPY patches ./patches
 # Copy the variables starting with `NEXT_PUBLIC_` from
 # `/app/apps/readest-app/.env.local.example` to /app/apps/readest-app/.env.local,
 # and set their values as environment variable placeholders in the format `KEY=\$KEY`.
