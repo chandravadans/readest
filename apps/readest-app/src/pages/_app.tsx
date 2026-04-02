@@ -1,9 +1,4 @@
-import { loadEnvConfig } from 'next-runtime-env';
 import Head from 'next/head';
-// Load runtime environment variables from .env.runtime (client-side only)
-if (typeof window !== 'undefined') {
-  loadEnvConfig();
-}
 import { AppProps } from 'next/app';
 import { EnvProvider } from '@/context/EnvContext';
 import Providers from '@/components/Providers';
