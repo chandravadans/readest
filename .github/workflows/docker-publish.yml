@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Docker image tag"
+        description: 'Docker image tag'
         required: false
-        default: "latest"
+        default: 'latest'
 
 permissions:
   contents: read
