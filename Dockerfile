@@ -1,63 +1,40 @@
-FROM node:22-slim AS base
+FROM docker.io/node:22-slim AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable && corepack prepare pnpm@10.24.0 --activate
+RUN corepack enable
+RUN corepack prepare pnpm@10.29.3 --activate
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/readest-app/package.json ./apps/readest-app/
+COPY patches/ ./patches/
+COPY packages/ ./packages/
+
+FROM base AS dependencies
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+RUN pnpm --filter @readest/readest-app setup-vendors
+
+FROM dependencies AS development-stage
+COPY . .
+WORKDIR /app/apps/readest-app
+EXPOSE 3000
+ENTRYPOINT ["pnpm", "dev-web", "-H", "0.0.0.0"]
 
 FROM base AS build
-WORKDIR /app
-# Uncomment the following line to increase the Node.js memory limit (if needed)
-ENV NODE_OPTIONS="--max-old-space-size=6144"
-
-# Copy only files needed for env generation + build
-COPY apps/readest-app ./apps/readest-app
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-COPY packages/foliate-js ./packages/foliate-js
-COPY patches ./patches
-# Copy the variables starting with `NEXT_PUBLIC_` from
-# `/app/apps/readest-app/.env.local.example` to /app/apps/readest-app/.env.local,
-# and set their values as environment variable placeholders in the format `KEY=\$KEY`.
-RUN env_source=/app/apps/readest-app/.env.local.example; \
-    env_target=/app/apps/readest-app/.env.local; \
-    awk -F= '/^NEXT_PUBLIC_/ && $1 != "" { printf "%s=\$%s\n", $1, $1 }' $env_source >> $env_target && \
-    \
-    # Replace `NEXT_PUBLIC_SUPABASE_URL` to `https://your-supabase-url.com` placeholder for avoid `Invalid URL` error during build
-    sed -i 's|^NEXT_PUBLIC_SUPABASE_URL=.*$|NEXT_PUBLIC_SUPABASE_URL=https://your-supabase-url.com|' $env_target
-
-ENV CI="true"
-RUN pnpm install
-RUN pnpm --filter=@readest/readest-app setup-pdfjs && \
-    pnpm --filter=@readest/readest-app build-web
-
-# Replace `https://your-supabase-url.com` in `.next` js files with environment variable
-RUN find /app/apps/readest-app/.next -name "*.js" -exec sed -i "s|https://your-supabase-url.com|\$NEXT_PUBLIC_SUPABASE_URL|g" {} +
-
-RUN rm -rf /app/apps/readest-app/.next/cache && \
-    pnpm --filter=@readest/readest-app install dotenv-cli @next/bundle-analyzer -P
-
-FROM base
-ENV NODE_ENV=production
-WORKDIR /app
-
-COPY --from=build /app/apps/readest-app/package.json /app/apps/readest-app/package.json
-COPY --from=build /app/package.json /app/package.json
-COPY --from=build /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
-COPY --from=build /app/apps/readest-app/.next /app/apps/readest-app/.next
-COPY --from=build /app/apps/readest-app/public /app/apps/readest-app/public
-
-ENV CI="true"
-RUN pnpm fetch --prod && pnpm install -r --offline --prod && \
-    \
-    # Install gettext for envsubst
-    apt-get update && apt-get install -y gettext-base && \
-    rm -rf /var/lib/apt/lists/*
-
-# Add at the end to leverage cache
-COPY ./docker-entrypoint.sh /docker-entrypoint.sh
-
-RUN chmod +x /docker-entrypoint.sh && \
-    rm -rf packages/tauri* apps/readest-app/src-tauri
-
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ARG NEXT_PUBLIC_APP_PLATFORM
+ARG NEXT_PUBLIC_API_BASE_URL
+ARG NEXT_PUBLIC_OBJECT_STORAGE_TYPE
+ARG NEXT_PUBLIC_STORAGE_FIXED_QUOTA
+ARG NEXT_PUBLIC_TRANSLATION_FIXED_QUOTA
+COPY --from=dependencies /app/node_modules /app/node_modules
+COPY --from=dependencies /app/apps/readest-app/node_modules /app/apps/readest-app/node_modules
+COPY --from=dependencies /app/apps/readest-app/public/vendor /app/apps/readest-app/public/vendor
+COPY --from=dependencies /app/packages/foliate-js/node_modules /app/packages/foliate-js/node_modules
+COPY . .
 WORKDIR /app/apps/readest-app
-ENTRYPOINT ["/docker-entrypoint.sh"]
-EXPOSE 3000
+RUN pnpm build-web
 
+FROM build AS production-stage
+ENTRYPOINT ["pnpm", "start-web", "-H", "0.0.0.0"]
+EXPOSE 3000
