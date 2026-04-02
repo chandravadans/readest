@@ -43,6 +43,16 @@ jobs:
           tags: |
             type=raw,value=${{ inputs.tag || 'latest' }}
 
+
+      - name: Ensure vendor/pdfjs/ files exist
+        run: |
+          set -e
+          # Install dependencies needed for scripts
+          npm install -g pnpm
+          pnpm install --frozen-lockfile
+          # Run the vendor setup script (adjust if your script is named differently)
+          pnpm --filter @readest/readest-app setup-vendors
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
