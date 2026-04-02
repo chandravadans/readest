@@ -1,40 +1,47 @@
+
+# --- Base image ---
 FROM docker.io/node:22-slim AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
-RUN corepack prepare pnpm@10.29.3 --activate
+RUN corepack enable && corepack prepare pnpm@10.29.3 --activate
 WORKDIR /app
+
+# --- Install dependencies only for web app ---
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/readest-app/package.json ./apps/readest-app/
 COPY patches/ ./patches/
 COPY packages/ ./packages/
-
-FROM base AS dependencies
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
-RUN pnpm --filter @readest/readest-app setup-vendors
 
-FROM dependencies AS development-stage
-COPY . .
-WORKDIR /app/apps/readest-app
-EXPOSE 3000
-ENTRYPOINT ["pnpm", "dev-web", "-H", "0.0.0.0"]
 
-FROM base AS build
-ARG NEXT_PUBLIC_SUPABASE_URL
-ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
-ARG NEXT_PUBLIC_APP_PLATFORM
-ARG NEXT_PUBLIC_API_BASE_URL
-ARG NEXT_PUBLIC_OBJECT_STORAGE_TYPE
-ARG NEXT_PUBLIC_STORAGE_FIXED_QUOTA
-ARG NEXT_PUBLIC_TRANSLATION_FIXED_QUOTA
-COPY --from=dependencies /app/node_modules /app/node_modules
-COPY --from=dependencies /app/apps/readest-app/node_modules /app/apps/readest-app/node_modules
-COPY --from=dependencies /app/apps/readest-app/public/vendor /app/apps/readest-app/public/vendor
-COPY --from=dependencies /app/packages/foliate-js/node_modules /app/packages/foliate-js/node_modules
-COPY . .
+# --- Copy source and build web app ---
+COPY apps/readest-app ./apps/readest-app
 WORKDIR /app/apps/readest-app
+COPY apps/readest-app/.env.web .env.web
+COPY apps/readest-app/.env.local.example .env.local.example
+RUN pnpm setup-vendors
+# Install next-runtime-env for runtime variable injection
+RUN pnpm add next-runtime-env
 RUN pnpm build-web
 
-FROM build AS production-stage
-ENTRYPOINT ["pnpm", "start-web", "-H", "0.0.0.0"]
+# --- Production image ---
+FROM docker.io/node:22-slim AS runner
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+WORKDIR /app
+
+# Only copy necessary files for running the web app
+COPY --from=base /app/apps/readest-app/.env.local.example ./apps/readest-app/.env.local.example
+COPY --from=base /app/apps/readest-app/public ./apps/readest-app/public
+COPY --from=base /app/apps/readest-app/.next ./apps/readest-app/.next
+COPY --from=base /app/apps/readest-app/package.json ./apps/readest-app/package.json
+COPY --from=base /app/node_modules ./node_modules
+COPY --from=base /app/apps/readest-app/node_modules ./apps/readest-app/node_modules
+# Copy entrypoint script
+COPY apps/readest-app/scripts/entrypoint.sh ./apps/readest-app/scripts/entrypoint.sh
+RUN chmod +x ./apps/readest-app/scripts/entrypoint.sh
+
+WORKDIR /app/apps/readest-app
 EXPOSE 3000
+ENTRYPOINT ["./scripts/entrypoint.sh"]
+CMD ["pnpm", "start-web", "-H", "0.0.0.0"]
