@@ -1,10 +1,11 @@
 import clsx from 'clsx';
 import dayjs from 'dayjs';
 import React, { useRef, useState } from 'react';
+import { MdEdit, MdDelete } from 'react-icons/md';
 
 import { marked } from 'marked';
 import { useEnv } from '@/context/EnvContext';
-import { BookNote } from '@/types/book';
+import { BookNote, HighlightColor } from '@/types/book';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useNotebookStore } from '@/store/notebookStore';
@@ -12,6 +13,7 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { eventDispatcher } from '@/utils/event';
+import { NOTE_PREFIX } from '@/types/view';
 import useScrollToItem from '../../hooks/useScrollToItem';
 import TextButton from '@/components/TextButton';
 import TextEditor, { TextEditorRef } from '@/components/TextEditor';
@@ -19,9 +21,11 @@ import TextEditor, { TextEditorRef } from '@/components/TextEditor';
 interface BooknoteItemProps {
   bookKey: string;
   item: BookNote;
+  isNearest?: boolean;
+  onClick?: () => void;
 }
 
-const BooknoteItem: React.FC<BooknoteItemProps> = ({ bookKey, item }) => {
+const BooknoteItem: React.FC<BooknoteItemProps> = ({ bookKey, item, isNearest, onClick }) => {
   const _ = useTranslation();
   const { envConfig } = useEnv();
   const { settings } = useSettingsStore();
@@ -29,19 +33,24 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({ bookKey, item }) => {
   const { getProgress, getView, getViewsById } = useReaderStore();
   const { setNotebookEditAnnotation, setNotebookVisible } = useNotebookStore();
 
+  const globalReadSettings = settings.globalReadSettings;
+  const customColors = globalReadSettings.customHighlightColors;
+
   const { text, cfi, note } = item;
   const editorRef = useRef<TextEditorRef>(null);
   const [editorDraft, setEditorDraft] = useState(text || '');
   const [inlineEditMode, setInlineEditMode] = useState(false);
   const separatorWidth = useResponsiveSize(3);
+  const size18 = useResponsiveSize(18);
 
   const progress = getProgress(bookKey);
-  const { isCurrent, viewRef } = useScrollToItem(cfi, progress);
+  const { isCurrent, viewRef } = useScrollToItem(cfi, progress, isNearest);
 
   const handleClickItem = (event: React.MouseEvent | React.KeyboardEvent) => {
     event.preventDefault();
     eventDispatcher.dispatch('navigate', { bookKey, cfi });
 
+    onClick?.();
     getView(bookKey)?.goTo(cfi);
     if (note) {
       setNotebookVisible(true);
@@ -57,7 +66,9 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({ bookKey, item }) => {
       if (item.id === note.id) {
         item.deletedAt = Date.now();
         const views = getViewsById(bookKey.split('-')[0]!);
-        views.forEach((view) => view?.addAnnotation(item, true));
+        views.forEach((view) =>
+          view?.addAnnotation({ ...item, value: `${NOTE_PREFIX}${item.cfi}` }, true),
+        );
       }
     });
     const updatedConfig = updateBooknotes(bookKey, booknotes);
@@ -122,13 +133,15 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({ bookKey, item }) => {
     );
   }
 
+  const isEditable = item.note || item.type === 'bookmark';
+
   return (
     <li
       // eslint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role
       role='button'
       ref={viewRef}
       className={clsx(
-        'border-base-300 content group relative my-2 cursor-pointer rounded-lg p-2',
+        'booknote-item border-base-300 content group relative my-2 cursor-pointer rounded-lg p-2',
         isCurrent
           ? 'bg-base-300/85 hover:bg-base-300 focus:bg-base-300'
           : 'hover:bg-base-300/55 focus:bg-base-300/55 bg-base-100',
@@ -172,14 +185,27 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({ bookKey, item }) => {
           <div className={clsx('content font-size-sm line-clamp-3', item.note && 'mt-2')}>
             <span
               className={clsx(
-                'inline leading-normal',
+                'booknote-text inline leading-normal',
                 item.note && 'content font-size-xs text-gray-500',
                 (item.style === 'underline' || item.style === 'squiggly') &&
                   'underline decoration-2',
-                item.style === 'highlight' && `bg-${item.color}-500 bg-opacity-40`,
-                item.style === 'underline' && `decoration-${item.color}-400`,
-                item.style === 'squiggly' && `decoration-wavy decoration-${item.color}-400`,
+                item.style === 'highlight' && 'rounded-[4px] px-[2px] py-[1px]',
+                item.style === 'squiggly' && 'decoration-wavy',
               )}
+              style={
+                {
+                  ...(item.style === 'highlight'
+                    ? {
+                        backgroundColor: `color-mix(in srgb, ${customColors[item.color as HighlightColor] || item.color} calc(var(--overlayer-highlight-opacity, 0.3) * 100%), transparent)`,
+                      }
+                    : {}),
+                  ...(item.style === 'underline' || item.style === 'squiggly'
+                    ? {
+                        textDecorationColor: `color-mix(in srgb, ${customColors[item.color as HighlightColor] || item.color} 80%, transparent)`,
+                      }
+                    : {}),
+                } as React.CSSProperties
+              }
             >
               {text || ''}
             </span>
@@ -191,8 +217,10 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({ bookKey, item }) => {
         className={clsx(
           'max-h-0 overflow-hidden p-0',
           'transition-[max-height] duration-300 ease-in-out',
-          'group-hover:max-h-8 group-hover:overflow-visible',
-          'group-focus-within:max-h-8 group-focus-within:overflow-visible',
+          'group-focus-within:overflow-visible group-hover:overflow-visible',
+          isEditable
+            ? 'group-focus-within:max-h-12 group-hover:max-h-12'
+            : 'group-focus-within:max-h-8 group-hover:max-h-8',
         )}
         style={
           {
@@ -202,30 +230,41 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({ bookKey, item }) => {
         // This is needed to prevent the parent onClick from being triggered
         onClick={(e) => e.stopPropagation()}
       >
-        <div className='flex cursor-default items-center justify-between'>
-          <div className='flex items-center'>
-            <span className='text-sm text-gray-500 sm:text-xs'>
+        <div
+          className={clsx(
+            'flex cursor-default items-center justify-between py-2',
+            isEditable && 'flex-col',
+          )}
+        >
+          <div className='flex w-full items-center gap-1 truncate'>
+            <span className='truncate text-sm text-gray-500 sm:text-xs'>
+              {item.page ? _('p {{page}}' + ' · ', { page: item.page }) : ''}
+            </span>
+            <span className='truncate text-sm text-gray-500 sm:text-xs'>
               {dayjs(item.createdAt).fromNow()}
             </span>
           </div>
-          <div className='flex items-center justify-end space-x-3 p-2' dir='ltr'>
-            {(item.note || item.type === 'bookmark') && (
-              <TextButton
+          <div
+            className={clsx('flex items-center justify-end gap-3', isEditable && 'w-full')}
+            dir='ltr'
+          >
+            {isEditable && (
+              <button
                 onClick={item.type === 'bookmark' ? editBookmark : editNote.bind(null, item)}
-                variant='primary'
-                className='opacity-0 transition duration-300 ease-in-out group-focus-within:opacity-100 group-hover:opacity-100'
+                className='btn btn-ghost btn-xs p-0 text-blue-500 opacity-0 transition duration-300 ease-in-out hover:bg-transparent group-focus-within:opacity-100 group-hover:opacity-100'
+                aria-label={_('Edit')}
               >
-                {_('Edit')}
-              </TextButton>
+                <MdEdit size={size18} />
+              </button>
             )}
 
-            <TextButton
+            <button
               onClick={deleteNote.bind(null, item)}
-              variant='danger'
-              className='opacity-0 transition duration-300 ease-in-out group-focus-within:opacity-100 group-hover:opacity-100'
+              className='btn btn-ghost btn-xs p-0 text-red-500 opacity-0 transition duration-300 ease-in-out hover:bg-transparent group-focus-within:opacity-100 group-hover:opacity-100'
+              aria-label={_('Delete')}
             >
-              {_('Delete')}
-            </TextButton>
+              <MdDelete size={size18} />
+            </button>
           </div>
         </div>
       </div>

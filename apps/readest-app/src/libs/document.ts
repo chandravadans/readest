@@ -1,5 +1,6 @@
 import { BookFormat } from '@/types/book';
-import { Contributor, Identifier, LanguageMap } from '@/utils/book';
+import { Collection, Contributor, Identifier, LanguageMap } from '@/utils/book';
+import { configureZip } from '@/utils/zip';
 import * as epubcfi from 'foliate-js/epubcfi.js';
 
 export const CFI = epubcfi;
@@ -16,6 +17,7 @@ export interface TOCItem {
   id: number;
   label: string;
   href: string;
+  index: number; // Page index for PDF books
   cfi?: string;
   location?: Location;
   subitems?: TOCItem[];
@@ -26,8 +28,10 @@ export interface SectionItem {
   cfi: string;
   size: number;
   linear: string;
+  href?: string;
   location?: Location;
   pageSpread?: 'left' | 'right' | 'center' | '';
+  subitems?: Array<SectionItem>;
 
   createDocument: () => Promise<Document>;
 }
@@ -44,6 +48,10 @@ export type BookMetadata = {
   subject?: string | string[] | Contributor;
   identifier?: string;
   altIdentifier?: string | string[] | Identifier;
+  belongsTo?: {
+    collection?: Array<Collection> | Collection;
+    series?: Array<Collection> | Collection;
+  };
 
   subtitle?: string;
   series?: string;
@@ -57,14 +65,14 @@ export type BookMetadata = {
 
 export interface BookDoc {
   metadata: BookMetadata;
-  rendition?: {
+  rendition: {
     layout?: 'pre-paginated' | 'reflowable';
     spread?: 'auto' | 'none';
     viewport?: { width: number; height: number };
   };
   dir: string;
   toc?: Array<TOCItem>;
-  sections?: Array<SectionItem>;
+  sections: Array<SectionItem>;
   transformTarget?: EventTarget;
   splitTOCHref(href: string): Array<string | number>;
   getCover(): Promise<Blob | null>;
@@ -79,6 +87,8 @@ export const EXTS: Record<BookFormat, string> = {
   CBZ: 'cbz',
   FB2: 'fb2',
   FBZ: 'fbz',
+  TXT: 'txt',
+  MD: 'md',
 };
 
 export const MIMETYPES: Record<BookFormat, string[]> = {
@@ -90,6 +100,8 @@ export const MIMETYPES: Record<BookFormat, string[]> = {
   CBZ: ['application/vnd.comicbook+zip', 'application/zip', 'application/x-cbz'],
   FB2: ['application/x-fictionbook+xml', 'text/xml', 'application/xml'],
   FBZ: ['application/x-zip-compressed-fb2', 'application/zip'],
+  TXT: ['text/plain'],
+  MD: ['text/markdown', 'text/x-markdown'],
 };
 
 export class DocumentLoader {
@@ -137,11 +149,9 @@ export class DocumentLoader {
       return null;
     };
 
-    const { configure, ZipReader, BlobReader, TextWriter, BlobWriter } = await import(
-      '@zip.js/zip.js'
-    );
+    await configureZip();
+    const { ZipReader, BlobReader, TextWriter, BlobWriter } = await import('@zip.js/zip.js');
     type Entry = import('@zip.js/zip.js').Entry;
-    configure({ useWebWorkers: false });
     const reader = new ZipReader(new BlobReader(this.file));
     const entries = await reader.getEntries();
     const map = new Map(entries.map((entry) => [entry.filename, entry]));
@@ -151,10 +161,10 @@ export class DocumentLoader {
         map.has(name) ? f(map.get(name)!, ...args) : null;
 
     const loadText = load((entry: Entry) =>
-      entry.getData ? entry.getData(new TextWriter()) : null,
+      !entry.directory ? entry.getData(new TextWriter()) : null,
     );
     const loadBlob = load((entry: Entry, type?: string) =>
-      entry.getData ? entry.getData(new BlobWriter(type!)) : null,
+      !entry.directory ? entry.getData(new BlobWriter(type!)) : null,
     );
     const getSize = (name: string) => map.get(name)?.uncompressedSize ?? 0;
 
@@ -188,48 +198,56 @@ export class DocumentLoader {
     if (!this.file.size) {
       throw new Error('File is empty');
     }
-    if (await this.isZip()) {
-      const loader = await this.makeZipLoader();
-      const { entries } = loader;
+    try {
+      if (await this.isZip()) {
+        const loader = await this.makeZipLoader();
+        const { entries } = loader;
 
-      if (this.isCBZ()) {
-        const { makeComicBook } = await import('foliate-js/comic-book.js');
-        book = await makeComicBook(loader, this.file);
-        format = 'CBZ';
-      } else if (this.isFBZ()) {
-        const entry = entries.find((entry) => entry.filename.endsWith(`.${EXTS.FB2}`));
-        const blob = await loader.loadBlob((entry ?? entries[0]!).filename);
+        if (this.isCBZ()) {
+          const { makeComicBook } = await import('foliate-js/comic-book.js');
+          book = await makeComicBook(loader, this.file);
+          format = 'CBZ';
+        } else if (this.isFBZ()) {
+          const entry = entries.find((entry) => entry.filename.endsWith(`.${EXTS.FB2}`));
+          const blob = await loader.loadBlob((entry ?? entries[0]!).filename);
+          const { makeFB2 } = await import('foliate-js/fb2.js');
+          book = await makeFB2(blob);
+          format = 'FBZ';
+        } else {
+          const { EPUB } = await import('foliate-js/epub.js');
+          book = await new EPUB(loader).init();
+          format = 'EPUB';
+        }
+      } else if (await this.isPDF()) {
+        const { makePDF } = await import('foliate-js/pdf.js');
+        book = await makePDF(this.file);
+        format = 'PDF';
+      } else if (await (await import('foliate-js/mobi.js')).isMOBI(this.file)) {
+        const fflate = await import('foliate-js/vendor/fflate.js');
+        const { MOBI } = await import('foliate-js/mobi.js');
+        book = await new MOBI({ unzlib: fflate.unzlibSync }).open(this.file);
+        const ext = this.file.name.split('.').pop()?.toLowerCase();
+        switch (ext) {
+          case 'azw':
+            format = 'AZW';
+            break;
+          case 'azw3':
+            format = 'AZW3';
+            break;
+          default:
+            format = 'MOBI';
+        }
+      } else if (this.isFB2()) {
         const { makeFB2 } = await import('foliate-js/fb2.js');
-        book = await makeFB2(blob);
-        format = 'FBZ';
-      } else {
-        const { EPUB } = await import('foliate-js/epub.js');
-        book = await new EPUB(loader).init();
-        format = 'EPUB';
+        book = await makeFB2(this.file);
+        format = 'FB2';
       }
-    } else if (await this.isPDF()) {
-      const { makePDF } = await import('foliate-js/pdf.js');
-      book = await makePDF(this.file);
-      format = 'PDF';
-    } else if (await (await import('foliate-js/mobi.js')).isMOBI(this.file)) {
-      const fflate = await import('foliate-js/vendor/fflate.js');
-      const { MOBI } = await import('foliate-js/mobi.js');
-      book = await new MOBI({ unzlib: fflate.unzlibSync }).open(this.file);
-      const ext = this.file.name.split('.').pop()?.toLowerCase();
-      switch (ext) {
-        case 'azw':
-          format = 'AZW';
-          break;
-        case 'azw3':
-          format = 'AZW3';
-          break;
-        default:
-          format = 'MOBI';
+    } catch (e: unknown) {
+      console.error('Failed to open document:', e);
+      if (e instanceof Error && e.message?.includes('not a valid zip')) {
+        throw new Error('Unsupported or corrupted book file');
       }
-    } else if (this.isFB2()) {
-      const { makeFB2 } = await import('foliate-js/fb2.js');
-      book = await makeFB2(this.file);
-      format = 'FB2';
+      throw e;
     }
     return { book, format } as { book: BookDoc; format: BookFormat };
   }
@@ -253,4 +271,36 @@ export const getFileExtFromMimeType = (mimeType?: string): string => {
     }
   }
   return '';
+};
+
+export const getMimeTypeFromFileExt = (ext: string): string => {
+  ext = ext.toLowerCase();
+  for (const format in EXTS) {
+    if (EXTS[format as BookFormat] === ext) {
+      const mimeTypes = MIMETYPES[format as BookFormat];
+      return mimeTypes[0] || 'application/octet-stream';
+    }
+  }
+  return 'application/octet-stream';
+};
+
+export const convertBlobUrlToDataUrl = async (blobUrl: string): Promise<string> => {
+  try {
+    const response = await fetch(blobUrl);
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch blob from "${blobUrl}": ${response.status} ${response.statusText}`,
+      );
+    }
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.error('Failed to convert blob to data URL:', error);
+    throw error;
+  }
 };

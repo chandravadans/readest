@@ -13,6 +13,7 @@ import { viewPagination } from '../../hooks/usePagination';
 import MobileFooterBar from './MobileFooterBar';
 import DesktopFooterBar from './DesktopFooterBar';
 import TTSControl from '../tts/TTSControl';
+import { RSVPControl } from '../rsvp';
 
 const FooterBar: React.FC<FooterBarProps> = ({
   bookKey,
@@ -41,6 +42,9 @@ const FooterBar: React.FC<FooterBarProps> = ({
   const actionTab = hoveredBookKey === bookKey ? userSelectedTab : '';
   const isVisible = hoveredBookKey === bookKey;
 
+  const docs = view?.renderer.getContents() ?? [];
+  const pointerInDoc = docs.some(({ doc }) => doc?.body?.style.cursor === 'pointer');
+
   const progressInfo = useMemo(
     () => (bookFormat === 'PDF' ? section : pageinfo),
     [bookFormat, section, pageinfo],
@@ -63,11 +67,11 @@ const FooterBar: React.FC<FooterBarProps> = ({
   );
 
   const handleGoPrevPage = useCallback(() => {
-    viewPagination(view, viewSettings, 'left');
+    viewPagination(view, viewSettings, 'left', 'page');
   }, [view, viewSettings]);
 
   const handleGoNextPage = useCallback(() => {
-    viewPagination(view, viewSettings, 'right');
+    viewPagination(view, viewSettings, 'right', 'page');
   }, [view, viewSettings]);
 
   const handleGoPrevSection = useCallback(() => {
@@ -200,15 +204,14 @@ const FooterBar: React.FC<FooterBarProps> = ({
     (bookData?.isFixedLayout && viewSettings?.zoomLevel && viewSettings.zoomLevel > 100);
 
   const containerClasses = clsx(
-    'footer-bar shadow-xs bottom-0 z-10 flex w-full flex-col',
-    'sm:h-[52px] sm:justify-center',
+    'footer-bar shadow-xs bottom-0 left-0 z-10 flex w-full flex-col sm:h-[52px]',
     'sm:bg-base-100 border-base-300/50 border-t sm:border-none',
     'transition-[opacity,transform] duration-300',
     window.innerWidth < 640 ? 'fixed' : 'absolute',
     appService?.hasRoundedWindow && 'rounded-window-bottom-right',
     !isSideBarVisible && appService?.hasRoundedWindow && 'rounded-window-bottom-left',
     isHoveredAnim && 'hover-bar-anim',
-    needHorizontalScroll && 'sm:!bottom-3 sm:!h-7',
+    needHorizontalScroll ? 'sm:!bottom-3 sm:!h-10 sm:justify-end' : 'sm:justify-center',
     isVisible
       ? 'pointer-events-auto translate-y-0 opacity-100'
       : 'pointer-events-none translate-y-full opacity-0 sm:translate-y-0',
@@ -224,7 +227,7 @@ const FooterBar: React.FC<FooterBarProps> = ({
         className={clsx(
           'absolute bottom-0 left-0 z-10 flex h-[52px] w-full',
           needHorizontalScroll && 'sm:!bottom-3 sm:!h-7',
-          isMobile ? 'pointer-events-none' : '',
+          isMobile || pointerInDoc ? 'pointer-events-none' : '',
         )}
         onMouseEnter={() => !isMobile && setHoveredBookKey(bookKey)}
         onTouchStart={() => !isMobile && setHoveredBookKey(bookKey)}
@@ -232,7 +235,7 @@ const FooterBar: React.FC<FooterBarProps> = ({
 
       {/* Main footer container */}
       <div
-        role='group'
+        role='contentinfo'
         aria-label={_('Footer Bar')}
         className={containerClasses}
         dir={viewSettings?.rtl ? 'rtl' : 'ltr'}
@@ -242,8 +245,12 @@ const FooterBar: React.FC<FooterBarProps> = ({
         <MobileFooterBar {...commonProps} />
         <DesktopFooterBar {...commonProps} />
       </div>
+      {isVisible && needHorizontalScroll && (
+        <div className='bg-base-100 pointer-events-none absolute bottom-0 left-0 hidden h-3 w-full sm:block' />
+      )}
 
       <TTSControl bookKey={bookKey} gridInsets={gridInsets} />
+      <RSVPControl bookKey={bookKey} gridInsets={gridInsets} />
     </>
   );
 };

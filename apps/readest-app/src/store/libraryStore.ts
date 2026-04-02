@@ -6,6 +6,7 @@ import { md5Fingerprint } from '@/utils/md5';
 
 interface LibraryState {
   library: Book[]; // might contain deleted books
+  libraryLoaded: boolean;
   isSyncing: boolean;
   syncProgress: number;
   checkOpenWithBooks: boolean;
@@ -23,6 +24,7 @@ interface LibraryState {
   setCheckLastOpenBooks: (check: boolean) => void;
   setLibrary: (books: Book[]) => void;
   updateBook: (envConfig: EnvConfigType, book: Book) => void;
+  updateBooks: (envConfig: EnvConfigType, books: Book[]) => void;
   setCurrentBookshelf: (bookshelf: (Book | BooksGroup)[]) => void;
   refreshGroups: () => void;
   addGroup: (name: string) => BookGroupType;
@@ -35,6 +37,7 @@ interface LibraryState {
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   library: [],
+  libraryLoaded: false,
   isSyncing: false,
   syncProgress: 0,
   currentBookshelf: [],
@@ -55,7 +58,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   setCheckLastOpenBooks: (check) => set({ checkLastOpenBooks: check }),
   setLibrary: (books) => {
     const { refreshGroups } = get();
-    set({ library: books });
+    set({ library: books, libraryLoaded: true });
     refreshGroups();
   },
   updateBook: async (envConfig: EnvConfigType, book: Book) => {
@@ -67,6 +70,17 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
     set({ library: [...library] });
     await appService.saveLibraryBooks(library);
+  },
+  updateBooks: async (envConfig: EnvConfigType, books: Book[]) => {
+    if (!books?.length) return;
+
+    const appService = await envConfig.getAppService();
+    const { library, refreshGroups } = get();
+
+    const newLibrary = Array.from(new Map([...library, ...books].map((b) => [b.hash, b])).values());
+    set({ library: newLibrary });
+    refreshGroups();
+    await appService.saveLibraryBooks(newLibrary);
   },
 
   setSelectedBooks: (ids: string[]) => {

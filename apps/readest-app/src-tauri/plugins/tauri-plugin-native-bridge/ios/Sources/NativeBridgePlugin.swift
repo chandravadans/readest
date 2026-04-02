@@ -581,7 +581,6 @@ class NativeBridgePlugin: Plugin {
     let darkMode = args.darkMode
 
     DispatchQueue.main.async {
-      UIApplication.shared.isIdleTimerDisabled = !visible
       UIApplication.shared.setStatusBarHidden(!visible, with: .none)
 
       let windows = UIApplication.shared.connectedScenes
@@ -837,8 +836,18 @@ class NativeBridgePlugin: Plugin {
       return invoke.reject("URI and destination path must be provided")
     }
 
-    guard let uri = URL(string: uriString) else {
-      return invoke.reject("Invalid URI")
+    let uri: URL
+    if uriString.hasPrefix("file://") {
+      let path = String(uriString.dropFirst("file://".count))
+      guard let decodedPath = path.removingPercentEncoding else {
+        return invoke.reject("Invalid URI encoding")
+      }
+      uri = URL(fileURLWithPath: decodedPath)
+    } else {
+      guard let parsed = URL(string: uriString) else {
+        return invoke.reject("Invalid URI")
+      }
+      uri = parsed
     }
 
     let fileManager = FileManager.default
@@ -878,6 +887,38 @@ class NativeBridgePlugin: Plugin {
       invoke.resolve(["success": true])
     } catch {
       invoke.reject("Failed to copy file: \(error.localizedDescription)")
+    }
+  }
+
+  @objc public func get_storefront_region_code(_ invoke: Invoke) {
+    Task {
+      if let storefront = await Storefront.current {
+        invoke.resolve(["regionCode": storefront.countryCode])
+      } else {
+        invoke.reject("Failed to get region code")
+      }
+    }
+  }
+
+  @objc public func get_safe_area_insets(_ invoke: Invoke) {
+    DispatchQueue.main.async {
+      if let window = UIApplication.shared.windows.first {
+        let insets = window.safeAreaInsets
+        invoke.resolve([
+          "top": insets.top,
+          "left": insets.left,
+          "bottom": insets.bottom,
+          "right": insets.right
+        ])
+      } else {
+        invoke.resolve([
+          "error": "No window found",
+          "top": 0,
+          "left": 0,
+          "bottom": 0,
+          "right": 0
+        ])
+      }
     }
   }
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -101,7 +101,7 @@ export const AboutWindow = () => {
             <div className='my-1 h-5'>
               {!updateStatus && (
                 <button
-                  className='badge badge-primary cursor-pointer p-2'
+                  className='btn btn-sm btn-primary cursor-pointer p-1 text-xs'
                   onClick={appService?.hasUpdater ? handleCheckUpdate : handleShowRecentUpdates}
                 >
                   {_('Check Update')}
@@ -121,7 +121,7 @@ export const AboutWindow = () => {
             </div>
           </div>
 
-          <hr className='border-base-300 my-12 w-full sm:my-4' />
+          <hr aria-hidden='true' className='border-base-300 my-12 w-full sm:my-4' />
 
           <div
             className='flex flex-1 flex-col items-center justify-start gap-2 px-4 text-center'

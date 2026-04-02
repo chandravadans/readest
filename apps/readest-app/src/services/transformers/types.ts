@@ -4,6 +4,7 @@ export type TransformContext = {
   bookKey: string;
   viewSettings: ViewSettings;
   userLocale: string;
+  isFixedLayout: boolean;
   primaryLanguage?: string;
   width?: number;
   height?: number;
@@ -15,5 +16,5 @@ export type TransformContext = {
 
 export type Transformer = {
   name: string;
-  transform: (ctx: TransformContext) => Promise<string>;
+  transform: (ctx: TransformContext, options?: unknown) => Promise<string>;
 };

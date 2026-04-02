@@ -5,11 +5,12 @@ import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useCustomFontStore } from '@/store/customFontStore';
-import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { SettingsPanelType } from './SettingsDialog';
+import Menu from '@/components/Menu';
 import MenuItem from '@/components/MenuItem';
 
 interface DialogMenuProps {
+  bookKey: string;
   activePanel: SettingsPanelType;
   setIsDropdownOpen?: (open: boolean) => void;
   onReset: () => void;
@@ -17,6 +18,7 @@ interface DialogMenuProps {
 }
 
 const DialogMenu: React.FC<DialogMenuProps> = ({
+  bookKey,
   activePanel,
   setIsDropdownOpen,
   onReset,
@@ -24,7 +26,6 @@ const DialogMenu: React.FC<DialogMenuProps> = ({
 }) => {
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
-  const iconSize = useResponsiveSize(16);
   const { setFontPanelView, isSettingsGlobal, setSettingsGlobal } = useSettingsStore();
   const { getAllFonts, removeFont, saveCustomFonts } = useCustomFontStore();
 
@@ -54,17 +55,13 @@ const DialogMenu: React.FC<DialogMenuProps> = ({
   };
 
   return (
-    <div
-      className={clsx(
-        'dropdown-content dropdown-right no-triangle border-base-200 z-20 mt-1 border shadow-2xl',
-        'text-base sm:text-sm',
-      )}
-    >
+    <Menu className={clsx('dialog-menu dropdown-content no-triangle z-20 mt-2 shadow-2xl')}>
       <MenuItem
         label={_('Global Settings')}
         tooltip={isSettingsGlobal ? _('Apply to All Books') : _('Apply to This Book')}
+        disabled={!bookKey}
         buttonClass='lg:tooltip'
-        Icon={isSettingsGlobal ? <MdCheck size={iconSize} className='text-base-content' /> : null}
+        Icon={isSettingsGlobal ? MdCheck : null}
         onClick={handleToggleGlobal}
       />
       <MenuItem label={resetLabel || _('Reset Settings')} onClick={handleResetToDefaults} />
@@ -74,7 +71,7 @@ const DialogMenu: React.FC<DialogMenuProps> = ({
           <MenuItem label={_('Manage Custom Fonts')} onClick={handleManageCustomFont} />
         </>
       )}
-    </div>
+    </Menu>
   );
 };
 

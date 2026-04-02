@@ -8,6 +8,12 @@ import { EnvConfigType, isWebAppPlatform } from '@/services/environment';
 import { SystemSettings } from '@/types/settings';
 import { Insets } from '@/types/misc';
 
+declare global {
+  interface Window {
+    __READEST_IS_EINK?: boolean;
+  }
+}
+
 interface ThemeState {
   themeMode: ThemeMode;
   themeColor: string;
@@ -46,7 +52,8 @@ const getInitialThemeMode = (): ThemeMode => {
 
 const getInitialThemeColor = (): string => {
   if (typeof window !== 'undefined' && localStorage) {
-    return localStorage.getItem('themeColor') || 'default';
+    const defaultColor = window.__READEST_IS_EINK ? 'contrast' : 'default';
+    return localStorage.getItem('themeColor') || defaultColor;
   }
   return 'default';
 };
@@ -161,6 +168,9 @@ export const initSystemThemeListener = (appService: AppService) => {
       systemIsDarkMode = res.colorScheme === 'dark';
     } else {
       systemIsDarkMode = mediaQuery.matches;
+    }
+    if (typeof window !== 'undefined' && localStorage) {
+      localStorage.setItem('systemIsDarkMode', systemIsDarkMode ? 'true' : 'false');
     }
     useThemeStore.getState().handleSystemThemeChange(systemIsDarkMode);
   };

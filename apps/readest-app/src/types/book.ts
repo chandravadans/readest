@@ -1,10 +1,29 @@
 import { BookMetadata } from '@/libs/document';
 import { TTSHighlightOptions } from '@/services/tts/types';
+import { TTSMediaMetadataMode } from '@/services/tts/types';
+import { AnnotationToolType } from './annotator';
 
-export type BookFormat = 'EPUB' | 'PDF' | 'MOBI' | 'AZW' | 'AZW3' | 'CBZ' | 'FB2' | 'FBZ';
+export type BookFormat =
+  | 'EPUB'
+  | 'PDF'
+  | 'MOBI'
+  | 'AZW'
+  | 'AZW3'
+  | 'CBZ'
+  | 'FB2'
+  | 'FBZ'
+  | 'TXT'
+  | 'MD';
 export type BookNoteType = 'bookmark' | 'annotation' | 'excerpt';
+export type ReadingStatus = 'unread' | 'reading' | 'finished';
 export type HighlightStyle = 'highlight' | 'underline' | 'squiggly';
-export type HighlightColor = 'red' | 'yellow' | 'green' | 'blue' | 'violet';
+// Predefined highlight colors, can be extended with custom hex colors
+export type HighlightColor = 'red' | 'yellow' | 'green' | 'blue' | 'violet' | string;
+export type ReadingRulerColor = 'transparent' | 'yellow' | 'green' | 'blue' | 'rose';
+
+export interface ParagraphModeConfig {
+  enabled: boolean;
+}
 
 export const FIXED_LAYOUT_FORMATS: Set<BookFormat> = new Set(['PDF', 'CBZ']);
 
@@ -38,6 +57,7 @@ export interface Book {
 
   lastUpdated?: number; // deprecated in favor of updatedAt
   progress?: [number, number]; // Add progress field: [current, total], 1-based page number
+  readingStatus?: ReadingStatus;
   primaryLanguage?: string;
 
   metadata?: BookMetadata;
@@ -65,7 +85,10 @@ export interface BookNote {
   metaHash?: string;
   id: string;
   type: BookNoteType;
-  cfi: string;
+  cfi: string; // Canonicalized CFI for the note location
+  xpointer0?: string; // Start XPointer for the note location
+  xpointer1?: string; // End XPointer for the note location
+  page?: number;
   text?: string;
   style?: HighlightStyle;
   color?: HighlightColor;
@@ -98,22 +121,21 @@ export interface BookLayout {
   compactMarginPx?: number; // deprecated
   gapPercent: number;
   scrolled: boolean;
+  noContinuousScroll: boolean;
   disableClick: boolean;
   fullscreenClickArea: boolean;
   swapClickArea: boolean;
   disableDoubleClick: boolean;
   volumeKeysToFlip: boolean;
-  continuousScroll: boolean;
   maxColumnCount: number;
   maxInlineSize: number;
   maxBlockSize: number;
-  animated: boolean;
-  isEink: boolean;
   writingMode: WritingMode;
   vertical: boolean;
   rtl: boolean;
   scrollingOverlap: number;
   allowScript: boolean;
+  hideScrollbar: boolean;
 }
 
 export interface BookStyle {
@@ -133,6 +155,7 @@ export interface BookStyle {
   backgroundTextureId: string;
   backgroundOpacity: number;
   backgroundSize: string;
+  highlightOpacity: number;
   codeHighlighting: boolean;
   codeLanguage: string;
   userStylesheet: string;
@@ -171,6 +194,7 @@ export interface BookLanguage {
   convertChineseVariant: ConvertChineseVariant;
 }
 
+export type ProgressBarMode = 'remaining' | 'progress' | 'battery' | 'time' | 'all' | 'none';
 export interface ViewConfig {
   sideBarTab: string;
   uiLanguage: string;
@@ -184,10 +208,26 @@ export interface ViewConfig {
   showRemainingTime: boolean;
   showRemainingPages: boolean;
   showProgressInfo: boolean;
+  showCurrentTime: boolean;
+  use24HourClock: boolean;
+  showCurrentBatteryStatus: boolean;
+  showBatteryPercentage: boolean;
+  tapToToggleFooter: boolean;
   showBarsOnScroll: boolean;
   showMarginsOnScroll: boolean;
+  showPaginationButtons: boolean;
   progressStyle: 'percentage' | 'fraction';
-  progressInfoMode: 'remaining' | 'progress' | 'all' | 'none';
+  progressInfoMode: ProgressBarMode;
+
+  animated: boolean;
+  isEink: boolean;
+  isColorEink: boolean;
+
+  readingRulerEnabled: boolean;
+  readingRulerLines: number;
+  readingRulerPosition: number;
+  readingRulerOpacity: number;
+  readingRulerColor: ReadingRulerColor;
 }
 
 export interface TTSConfig {
@@ -196,6 +236,7 @@ export interface TTSConfig {
   ttsLocation: string;
   showTTSBar: boolean;
   ttsHighlightOptions: TTSHighlightOptions;
+  ttsMediaMetadata: TTSMediaMetadataMode;
 }
 
 export interface TranslatorConfig {
@@ -204,6 +245,29 @@ export interface TranslatorConfig {
   translateTargetLang: string;
   showTranslateSource: boolean;
   ttsReadAloudText: string;
+}
+
+export interface NoteExportConfig {
+  includeTitle: boolean;
+  includeAuthor: boolean;
+  includeDate: boolean;
+  includeChapterTitles: boolean;
+  includeQuotes: boolean;
+  includeNotes: boolean;
+  includePageNumber: boolean;
+  includeTimestamp: boolean;
+  includeChapterSeparator: boolean;
+  noteSeparator: string;
+  useCustomTemplate: boolean;
+  customTemplate: string;
+  exportAsPlainText: boolean;
+}
+
+export interface AnnotatorConfig {
+  enableAnnotationQuickActions: boolean;
+  annotationQuickAction: AnnotationToolType | null;
+  copyToNotebook: boolean;
+  noteExportConfig: NoteExportConfig;
 }
 
 export interface ScreenConfig {
@@ -224,6 +288,7 @@ export interface ProofreadRule {
   order: number; // Lower numbers apply first
   wholeWord?: boolean; // Match whole words only (uses \b word boundaries)
   caseSensitive?: boolean; // Case-sensitive matching (default true)
+  onlyForTTS?: boolean; // Only replace text for TTS, not in the book display (only for book/library scope)
 }
 
 export interface ProofreadRulesConfig {
@@ -231,7 +296,8 @@ export interface ProofreadRulesConfig {
 }
 
 export interface ViewSettings
-  extends BookLayout,
+  extends
+    BookLayout,
     BookStyle,
     BookFont,
     BookLanguage,
@@ -239,17 +305,21 @@ export interface ViewSettings
     TTSConfig,
     TranslatorConfig,
     ScreenConfig,
-    ProofreadRulesConfig {}
+    ProofreadRulesConfig,
+    AnnotatorConfig {
+  paragraphMode?: ParagraphModeConfig;
+}
 
 export interface BookProgress {
   location: string;
-  sectionId: number;
   sectionHref: string;
   sectionLabel: string;
   section: PageInfo;
   pageinfo: PageInfo;
   timeinfo: TimeInfo;
+  index: number;
   range: Range;
+  page: number;
 }
 
 export interface BookSearchConfig {
@@ -260,6 +330,9 @@ export interface BookSearchConfig {
   index?: number;
   query?: string;
   acceptNode?: (node: Node) => number;
+
+  // pre-cached search results
+  results?: BookSearchResult[] | BookSearchMatch[] | null;
 }
 
 export interface SearchExcerpt {
@@ -274,6 +347,7 @@ export interface BookSearchMatch {
 }
 
 export interface BookSearchResult {
+  index?: number;
   label: string;
   subitems: BookSearchMatch[];
   progress?: number;
@@ -291,6 +365,7 @@ export interface BookConfig {
 
   lastSyncedAtConfig?: number;
   lastSyncedAtNotes?: number;
+  foliateImportedAt?: number;
 
   updatedAt: number;
 }

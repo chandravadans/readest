@@ -27,18 +27,48 @@ const nextConfig = {
   assetPrefix: '',
   reactStrictMode: true,
   serverExternalPackages: ['isows'],
-  turbopack: {},
-  transpilePackages: !isDev
-    ? [
-        'i18next-browser-languagedetector',
-        'react-i18next',
-        'i18next',
-        '@tauri-apps',
-        'highlight.js',
-        'foliate-js',
-        'marked',
-      ]
-    : [],
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      nunjucks: 'nunjucks/browser/nunjucks.js',
+      ...(appPlatform !== 'web' ? { '@tursodatabase/database-wasm': false } : {}),
+    };
+    return config;
+  },
+  turbopack: {
+    resolveAlias: {
+      nunjucks: 'nunjucks/browser/nunjucks.js',
+      ...(appPlatform !== 'web' ? { '@tursodatabase/database-wasm': './src/utils/stub.ts' } : {}),
+    },
+  },
+  transpilePackages: [
+    'ai',
+    'ai-sdk-ollama',
+    '@ai-sdk/react',
+    '@assistant-ui/react',
+    '@assistant-ui/react-ai-sdk',
+    '@assistant-ui/react-markdown',
+    'streamdown',
+    ...(isDev
+      ? []
+      : [
+          'i18next-browser-languagedetector',
+          'react-i18next',
+          'i18next',
+          '@tauri-apps',
+          'highlight.js',
+          'foliate-js',
+          'marked',
+        ]),
+  ],
+  async rewrites() {
+    return [
+      {
+        source: '/reader/:ids',
+        destination: '/reader?ids=:ids',
+      },
+    ];
+  },
   async headers() {
     return [
       {
@@ -55,7 +85,9 @@ const nextConfig = {
         headers: [
           {
             key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
+            value: isDev
+              ? 'public, max-age=0, must-revalidate'
+              : 'public, max-age=31536000, immutable',
           },
         ],
       },

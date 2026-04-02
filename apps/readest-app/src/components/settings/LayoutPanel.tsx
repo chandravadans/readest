@@ -70,8 +70,18 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
   const [showRemainingTime, setShowRemainingTime] = useState(viewSettings.showRemainingTime);
   const [showRemainingPages, setShowRemainingPages] = useState(viewSettings.showRemainingPages);
   const [showProgressInfo, setShowProgressInfo] = useState(viewSettings.showProgressInfo);
+  const [showCurrentTime, setShowCurrentTime] = useState(viewSettings.showCurrentTime);
+  const [use24HourClock, setUse24HourClock] = useState(viewSettings.use24HourClock);
+  const [showCurrentBatteryStatus, setShowCurrentBatteryStatus] = useState(
+    viewSettings.showCurrentBatteryStatus,
+  );
+  const [showBatteryPercentage, setShowBatteryPercentage] = useState(
+    viewSettings.showBatteryPercentage,
+  );
+  const [tapToToggleFooter, setTapToToggleFooter] = useState(viewSettings.tapToToggleFooter);
   const [progressStyle, setProgressStyle] = useState(viewSettings.progressStyle);
   const [screenOrientation, setScreenOrientation] = useState(viewSettings.screenOrientation);
+
   const resetToDefaults = useResetViewSettings();
 
   const handleReset = () => {
@@ -104,6 +114,11 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
       showRemainingTime: setShowRemainingTime,
       showRemainingPages: setShowRemainingPages,
       showProgressInfo: setShowProgressInfo,
+      showCurrentTime: setShowCurrentTime,
+      use24HourClock: setUse24HourClock,
+      showCurrentBatteryStatus: setShowCurrentBatteryStatus,
+      showBatteryPercentage: setShowBatteryPercentage,
+      tapToToggleFooter: setTapToToggleFooter,
       showMarginsOnScroll: setShowMarginsOnScroll,
     });
   };
@@ -247,15 +262,17 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
   useEffect(() => {
     if (maxColumnCount === viewSettings.maxColumnCount) return;
     saveViewSettings(envConfig, bookKey, 'maxColumnCount', maxColumnCount, false, false);
+    const newViewSettings = getViewSettings(bookKey)!;
     view?.renderer.setAttribute('max-column-count', maxColumnCount);
-    view?.renderer.setAttribute('max-inline-size', `${getMaxInlineSize(viewSettings)}px`);
+    view?.renderer.setAttribute('max-inline-size', `${getMaxInlineSize(newViewSettings)}px`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [maxColumnCount]);
 
   useEffect(() => {
     if (maxInlineSize === viewSettings.maxInlineSize) return;
     saveViewSettings(envConfig, bookKey, 'maxInlineSize', maxInlineSize, false, false);
-    view?.renderer.setAttribute('max-inline-size', `${getMaxInlineSize(viewSettings)}px`);
+    const newViewSettings = getViewSettings(bookKey)!;
+    view?.renderer.setAttribute('max-inline-size', `${getMaxInlineSize(newViewSettings)}px`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [maxInlineSize]);
 
@@ -277,7 +294,8 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
     }
     saveViewSettings(envConfig, bookKey, 'writingMode', writingMode, true).then(() => {
       if (view) {
-        view.renderer.setStyles?.(getStyles(viewSettings));
+        const newViewSettings = getViewSettings(bookKey)!;
+        view.renderer.setStyles?.(getStyles(newViewSettings));
         view.book.dir = getBookDirFromWritingMode(writingMode);
       }
       if (
@@ -334,9 +352,48 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
   }, [showProgressInfo]);
 
   useEffect(() => {
+    saveViewSettings(envConfig, bookKey, 'showCurrentTime', showCurrentTime, false, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCurrentTime]);
+
+  useEffect(() => {
+    saveViewSettings(envConfig, bookKey, 'use24HourClock', use24HourClock, false, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [use24HourClock]);
+
+  useEffect(() => {
+    saveViewSettings(
+      envConfig,
+      bookKey,
+      'showCurrentBatteryStatus',
+      showCurrentBatteryStatus,
+      false,
+      false,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCurrentBatteryStatus]);
+
+  useEffect(() => {
+    saveViewSettings(
+      envConfig,
+      bookKey,
+      'showBatteryPercentage',
+      showBatteryPercentage,
+      false,
+      false,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showBatteryPercentage]);
+
+  useEffect(() => {
     saveViewSettings(envConfig, bookKey, 'progressStyle', progressStyle, false, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [progressStyle]);
+
+  useEffect(() => {
+    saveViewSettings(envConfig, bookKey, 'tapToToggleFooter', tapToToggleFooter, false, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tapToToggleFooter]);
 
   useEffect(() => {
     if (showHeader === viewSettings.showHeader) return;
@@ -378,7 +435,10 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
 
   return (
     <div className='my-4 w-full space-y-6'>
-      <div className='flex items-center justify-between'>
+      <div
+        data-setting-id='settings.layout.overrideBookLayout'
+        className='flex items-center justify-between'
+      >
         <h2 className='font-medium'>{_('Override Book Layout')}</h2>
         <input
           type='checkbox'
@@ -388,7 +448,10 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
         />
       </div>
       {mightBeRTLBook && (
-        <div className='flex items-center justify-between'>
+        <div
+          data-setting-id='settings.layout.writingMode'
+          className='flex items-center justify-between'
+        >
           <h2 className='font-medium'>{_('Writing Mode')}</h2>
           <div className='flex gap-4'>
             <button
@@ -427,7 +490,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
       )}
 
       {viewSettings.vertical && (
-        <div className='w-full'>
+        <div className='w-full' data-setting-id='settings.layout.borderFrame'>
           <h2 className='mb-2 font-medium'>{_('Border Frame')}</h2>
           <div className='card bg-base-100 border-base-200 border shadow'>
             <div className='divide-base-200 divide-y'>
@@ -471,6 +534,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
               min={0}
               max={4}
               step={0.1}
+              data-setting-id='settings.layout.paragraphMargin'
             />
             <NumberInput
               label={_('Line Spacing')}
@@ -479,6 +543,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
               min={1.0}
               max={3.0}
               step={0.1}
+              data-setting-id='settings.layout.lineSpacing'
             />
             {langCode !== 'zh' && (
               <NumberInput
@@ -488,6 +553,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
                 min={-4}
                 max={8}
                 step={0.5}
+                data-setting-id='settings.layout.wordSpacing'
               />
             )}
             <NumberInput
@@ -497,6 +563,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
               min={-2}
               max={4}
               step={0.5}
+              data-setting-id='settings.layout.letterSpacing'
             />
             <NumberInput
               label={_('Text Indent')}
@@ -505,8 +572,9 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
               min={-2}
               max={4}
               step={1}
+              data-setting-id='settings.layout.paragraphIndent'
             />
-            <div className='config-item'>
+            <div className='config-item' data-setting-id='settings.layout.fullJustification'>
               <span className=''>{_('Full Justification')}</span>
               <input
                 type='checkbox'
@@ -515,7 +583,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
                 onChange={() => setFullJustification(!fullJustification)}
               />
             </div>
-            <div className='config-item'>
+            <div className='config-item' data-setting-id='settings.layout.hyphenation'>
               <span className=''>{_('Hyphenation')}</span>
               <input
                 type='checkbox'
@@ -528,7 +596,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
         </div>
       </div>
 
-      <div className='w-full'>
+      <div className='w-full' data-setting-id='settings.layout.pageMargins'>
         <h2 className='mb-2 font-medium'>{_('Page')}</h2>
         <div className='card bg-base-100 border-base-200 border shadow'>
           <div className='divide-base-200 divide-y'>
@@ -578,6 +646,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
               onChange={setGapPercent}
               min={0}
               max={30}
+              data-setting-id='settings.layout.pageGap'
             />
             <NumberInput
               label={_('Maximum Number of Columns')}
@@ -585,6 +654,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
               onChange={setMaxColumnCount}
               min={1}
               max={4}
+              data-setting-id='settings.layout.maxColumnCount'
             />
             <NumberInput
               label={viewSettings.vertical ? _('Maximum Column Height') : _('Maximum Column Width')}
@@ -594,6 +664,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
               min={200}
               max={9999}
               step={50}
+              data-setting-id='settings.layout.maxInlineSize'
             />
             <NumberInput
               label={viewSettings.vertical ? _('Maximum Column Width') : _('Maximum Column Height')}
@@ -603,6 +674,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
               min={400}
               max={9999}
               step={50}
+              data-setting-id='settings.layout.maxBlockSize'
             />
             <div className='config-item'>
               <span className=''>{_('Apply also in Scrolled Mode')}</span>
@@ -617,7 +689,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
         </div>
       </div>
 
-      <div className='w-full'>
+      <div className='w-full' data-setting-id='settings.layout.showHeader'>
         <h2 className='mb-2 font-medium'>{_('Header & Footer')}</h2>
         <div className='card bg-base-100 border-base-200 border shadow'>
           <div className='divide-base-200 divide-y'>
@@ -630,7 +702,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
                 onChange={() => setShowHeader(!showHeader)}
               />
             </div>
-            <div className='config-item'>
+            <div className='config-item' data-setting-id='settings.layout.showFooter'>
               <span className=''>{_('Show Footer')}</span>
               <input
                 type='checkbox'
@@ -683,7 +755,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
                 onChange={() => setShowProgressInfo(!showProgressInfo)}
               />
             </div>
-            <div className='config-item'>
+            <div className='config-item' data-setting-id='settings.layout.progressDisplay'>
               <span className=''>{_('Reading Progress Style')}</span>
               <Select
                 value={progressStyle}
@@ -693,6 +765,58 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
                   { value: 'percentage', label: _('Percentage') },
                 ]}
                 disabled={!showProgressInfo}
+              />
+            </div>
+            <div className='config-item'>
+              <span className=''>{_('Show Current Time')}</span>
+              <input
+                type='checkbox'
+                className='toggle'
+                checked={showCurrentTime}
+                disabled={!showFooter}
+                onChange={() => setShowCurrentTime(!showCurrentTime)}
+              />
+            </div>
+            {showCurrentTime && (
+              <div className='config-item'>
+                <span className=''>{_('Use 24 Hour Clock')}</span>
+                <input
+                  type='checkbox'
+                  className='toggle'
+                  checked={use24HourClock}
+                  disabled={!showFooter}
+                  onChange={() => setUse24HourClock(!use24HourClock)}
+                />
+              </div>
+            )}
+            <div className='config-item'>
+              <span className=''>{_('Show Current Battery Status')}</span>
+              <input
+                type='checkbox'
+                className='toggle'
+                checked={showCurrentBatteryStatus}
+                disabled={!showFooter}
+                onChange={() => setShowCurrentBatteryStatus(!showCurrentBatteryStatus)}
+              />
+            </div>
+            <div className='config-item'>
+              <span className=''>{_('Show Battery Percentage')}</span>
+              <input
+                type='checkbox'
+                className='toggle'
+                checked={showBatteryPercentage}
+                disabled={!showFooter || !showCurrentBatteryStatus}
+                onChange={() => setShowBatteryPercentage(!showBatteryPercentage)}
+              />
+            </div>
+            <div className='config-item'>
+              <span className=''>{_('Tap to Toggle Footer')}</span>
+              <input
+                type='checkbox'
+                className='toggle'
+                checked={tapToToggleFooter}
+                disabled={!showFooter}
+                onChange={() => setTapToToggleFooter(!tapToToggleFooter)}
               />
             </div>
             <div className='config-item'>

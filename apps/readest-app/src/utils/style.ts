@@ -107,6 +107,19 @@ const getFontStyles = (
   return fontStyles;
 };
 
+const getEinkSelectionStyles = () => {
+  return `
+    ::selection {
+      color: var(--theme-bg-color);
+      background: var(--theme-fg-color);
+    }
+    ::-moz-selection {
+      color: var(--theme-bg-color);
+      background: var(--theme-fg-color);
+    }
+  `;
+};
+
 const getColorStyles = (
   overrideColor: boolean,
   invertImgColorInDark: boolean,
@@ -127,12 +140,16 @@ const getColorStyles = (
     html, body {
       color: ${fg};
     }
+    ${isEink ? getEinkSelectionStyles() : ''}
     html[has-background], body[has-background] {
       --background-set: var(--theme-bg-color);
     }
     html {
       background-color: var(--theme-bg-color, transparent);
       background: var(--background-set, none);
+    }
+    body {
+      ${isEink ? `background-color: ${bg} !important;` : ''}
     }
     section, aside, blockquote, article, nav, header, footer, main, figure,
     div, p, font, h1, h2, h3, h4, h5, h6, li, span {
@@ -144,7 +161,7 @@ const getColorStyles = (
       ${overrideColor ? `background-color: ${bg} !important;` : ''}
     }
     a:any-link {
-      ${overrideColor ? `color: ${primary};` : isDarkMode ? `color: lightblue;` : ''}
+      ${overrideColor ? `color: ${primary} !important;` : isDarkMode ? `color: lightblue;` : ''}
       text-decoration: ${isEink ? 'underline' : 'none'};
     }
     body.pbg {
@@ -154,16 +171,29 @@ const getColorStyles = (
       ${isDarkMode && invertImgColorInDark ? 'filter: invert(100%);' : ''}
       ${!isDarkMode && overrideColor ? 'mix-blend-mode: multiply;' : ''}
     }
+    svg, img {
+      ${overrideColor ? `background-color: transparent !important;` : ''};
+    }
     /* horizontal rule #1649 */
-    *:has(> hr[class]):not(body) {
+    *:has(> hr.background-img):not(body) {
       background-color: ${bg};
     }
-    hr {
+    hr.background-img {
       mix-blend-mode: multiply;
     }
     /* inline images */
-    p img, span img, sup img {
+    *:has(> img.has-text-siblings):not(body) {
+      ${overrideColor ? `background-color: ${bg};` : ''}
+    }
+    p img.has-text-siblings, span img.has-text-siblings, sup img.has-text-siblings {
       mix-blend-mode: ${isDarkMode ? 'screen' : 'multiply'};
+    }
+    table {
+      overflow: auto;
+      display: table !important;
+    }
+    table:has(> colgroup) {
+      table-layout: fixed;
     }
     /* code */
     body.theme-dark code {
@@ -198,6 +228,10 @@ const getColorStyles = (
     .chapterHeader, .chapterHeader * {
       border-color: unset;
       background-color: ${bg} !important;
+    }
+    .calibre {
+      color: unset;
+      background-color: unset;
     }
   `;
   return colorStyles;
@@ -242,18 +276,22 @@ const getLayoutStyles = (
   }
   html, body {
     ${writingMode === 'auto' ? '' : `writing-mode: ${writingMode} !important;`}
-    ${vertical ? 'font-feature-settings: "vrt2" 1, "vert" 1; text-orientation: upright;' : ''}
     text-align: var(--default-text-align);
     max-height: unset;
+    -webkit-touch-callout: none;
+    -webkit-user-select: text;
   }
   body {
     overflow: unset;
     zoom: ${zoomLevel};
+    padding: unset;
+    margin: unset;
   }
-  svg, img {
-    height: auto;
+  svg:where(:not([width])), img:where(:not([width])) {
     width: auto;
-    background-color: transparent !important;
+  }
+  svg:where(:not([height])), img:where(:not([height])) {
+    height: auto;
   }
   figure > div:has(img) {
     height: auto !important;
@@ -280,9 +318,18 @@ const getLayoutStyles = (
     hanging-punctuation: allow-end last;
     widows: 2;
   }
+  li {
+    line-height: ${lineSpacing} ${overrideLayout ? '!important' : ''};
+    -webkit-hyphens: ${hyphenate ? 'auto' : 'manual'};
+    hyphens: ${hyphenate ? 'auto' : 'manual'};
+  }
   p.aligned-center, blockquote.aligned-center,
   dd.aligned-center, div.aligned-center {
     text-align: center ${overrideLayout ? '!important' : ''};
+  }
+  p.aligned-left, blockquote.aligned-left,
+  dd.aligned-left, div.aligned-left {
+    ${justify && overrideLayout ? 'text-align: justify !important;' : ''}
   }
   p.aligned-right, blockquote.aligned-right,
   dd.aligned-right, div.aligned-right {
@@ -320,9 +367,6 @@ const getLayoutStyles = (
     ${!vertical && overrideLayout ? `margin-top: ${paragraphMargin}em !important;` : ''}
     ${!vertical && overrideLayout ? `margin-bottom: ${paragraphMargin}em !important;` : ''}
   }
-  h1, h2, h3, h4, h5, h6 {
-    text-align: initial;
-  }
 
   :lang(zh), :lang(ja), :lang(ko) {
     widows: 1;
@@ -359,10 +403,6 @@ const getLayoutStyles = (
     display: none;
   }
 
-  .calibre {
-    color: unset;
-  }
-
   div:has(> img, > svg) {
     max-width: 100% !important;
   }
@@ -385,8 +425,8 @@ const getLayoutStyles = (
     height: 1em;
   }
   img.has-text-siblings {
-    height: 1em;
-    vertical-align: middle;
+    ${vertical ? 'width: 1em;' : 'height: 1em;'}
+    vertical-align: baseline;
   }
   :is(div) > img.has-text-siblings[style*="object-fit"] {
     display: block;
@@ -401,6 +441,14 @@ const getLayoutStyles = (
     position: relative;
     width: auto;
     height: auto;
+  }
+
+  /* page break */
+  body.paginated-mode div[style*="page-break-after: always"],
+  body.paginated-mode div[style*="page-break-after:always"],
+  body.paginated-mode p[style*="page-break-after: always"],
+  body.paginated-mode p[style*="page-break-after:always"] {
+    margin-bottom: calc(var(--available-height) * 1px);
   }
 
   /* workaround for some badly designed epubs */
@@ -432,11 +480,10 @@ export const getFootnoteStyles = () => `
 
   body {
     padding: 1em !important;
+    overflow-wrap: break-word;
   }
 
   a:any-link {
-    cursor: default;
-    pointer-events: none;
     text-decoration: none;
     padding: unset;
     margin: unset;
@@ -506,8 +553,8 @@ export const getThemeCode = () => {
   if (typeof window !== 'undefined') {
     themeColor = localStorage.getItem('themeColor') || 'default';
     themeMode = localStorage.getItem('themeMode') || 'auto';
+    systemIsDarkMode = localStorage.getItem('systemIsDarkMode') === 'true';
     customThemes = JSON.parse(localStorage.getItem('customThemes') || '[]');
-    systemIsDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
   }
   const isDarkMode = themeMode === 'dark' || (themeMode === 'auto' && systemIsDarkMode);
   let currentTheme = themes.find((theme) => theme.name === themeColor);
@@ -602,6 +649,7 @@ export const applyTranslationStyle = (viewSettings: ViewSettings) => {
 export const transformStylesheet = (css: string, vw: number, vh: number, vertical: boolean) => {
   const isMobile = ['ios', 'android'].includes(getOSPlatform());
   const fontScale = isMobile ? 1.25 : 1;
+  const isInlineStyle = !css.includes('{');
   const ruleRegex = /([^{]+)({[^}]+})/g;
   css = css.replace(ruleRegex, (match, selector, block) => {
     const hasTextAlignCenter = /text-align\s*:\s*center\s*[;$]/.test(block);
@@ -629,6 +677,24 @@ export const transformStylesheet = (css: string, vw: number, vh: number, vertica
     }
     return match;
   });
+
+  if (isInlineStyle) {
+    const hasPageBreakAfterAlways = /page-break-after\s*:\s*always\s*[;]?/.test(css);
+    if (hasPageBreakAfterAlways && !/margin-bottom\s*:/.test(css)) {
+      css = css.replace(/;?\s*$/, '') + '; margin-bottom: calc(var(--available-height) * 1px)';
+    }
+  } else {
+    css = css.replace(ruleRegex, (match, selector, block) => {
+      const hasPageBreakAfterAlways = /page-break-after\s*:\s*always\s*[;$]/.test(block);
+      if (hasPageBreakAfterAlways) {
+        if (!/margin-bottom\s*:/.test(block)) {
+          block = block.replace(/}$/, ' margin-bottom: calc(var(--available-height) * 1px); }');
+        }
+        return selector + block;
+      }
+      return match;
+    });
+  }
 
   // Process duokan-bleed
   css = css.replace(ruleRegex, (_, selector, block) => {
@@ -664,7 +730,7 @@ export const transformStylesheet = (css: string, vw: number, vh: number, vertica
             /}$/,
             ' width: calc(var(--_max-width) + var(--page-margin-left) + var(--page-margin-right)) !important; }',
           )
-          .replace(/}$/, ' max-width: 100vw !important; }');
+          .replace(/}$/, ' max-width: calc(var(--full-width) * 1px) !important; }');
       }
       if (
         !/height\s*:/.test(block) &&
@@ -676,7 +742,22 @@ export const transformStylesheet = (css: string, vw: number, vh: number, vertica
             /}$/,
             ' height: calc(100% + var(--page-margin-top) + var(--page-margin-bottom)) !important; }',
           )
-          .replace(/}$/, ' max-height: 100vh !important; }');
+          .replace(/}$/, ' max-height: calc(var(--full-height) * 1px) !important; }');
+      }
+    }
+    return selector + block;
+  });
+
+  // unset font-family for body when set to serif or sans-serif
+  css = css.replace(ruleRegex, (_, selector, block) => {
+    if (/\bbody\b/i.test(selector)) {
+      const hasSerifFont = /font-family\s*:\s*serif\s*(?:;|\}|$)/.test(block);
+      const hasSansSerifFont = /font-family\s*:\s*sans-serif\s*(?:;|\}|$)/.test(block);
+      if (hasSerifFont) {
+        block = block.replace(/font-family\s*:\s*serif\s*(;|\}|$)/gi, 'font-family: unset$1');
+      }
+      if (hasSansSerifFont) {
+        block = block.replace(/font-family\s*:\s*sans-serif\s*(;|\}|$)/gi, 'font-family: unset$1');
       }
     }
     return selector + block;
@@ -702,9 +783,20 @@ export const transformStylesheet = (css: string, vw: number, vh: number, vertica
       const rem = parseFloat(pt) / fontScale / 12;
       return `font-size: ${rem}rem`;
     })
+    .replace(/font-size\s*:\s*(\d*\.?\d+)(px|rem|em|%)?/gi, (_, size, unit = 'px') => {
+      return `font-size: max(${size}${unit}, var(--min-font-size, 8px))`;
+    })
     .replace(/(\d*\.?\d+)vw/gi, (_, d) => (parseFloat(d) * vw) / 100 + 'px')
     .replace(/(\d*\.?\d+)vh/gi, (_, d) => (parseFloat(d) * vh) / 100 + 'px')
-    .replace(/([\s;])font-family\s*:\s*monospace/gi, '$1font-family: var(--monospace)')
+    .replace(/([\s;])-webkit-user-select\s*:\s*none/gi, '$1-webkit-user-select: unset')
+    .replace(/([\s;])-moz-user-select\s*:\s*none/gi, '$1-moz-user-select: unset')
+    .replace(/([\s;])-ms-user-select\s*:\s*none/gi, '$1-ms-user-select: unset')
+    .replace(/([\s;])-o-user-select\s*:\s*none/gi, '$1-o-user-select: unset')
+    .replace(/([\s;])user-select\s*:\s*none/gi, '$1user-select: unset')
+    .replace(/(font-family\s*:[^;]*?)\bsans-serif\b/gi, '$1READEST_SS_PLACEHOLDER')
+    .replace(/(font-family\s*:[^;]*?)\bserif\b(?!-)/gi, '$1var(--serif, serif)')
+    .replace(/READEST_SS_PLACEHOLDER/g, 'var(--sans-serif, sans-serif)')
+    .replace(/(font-family\s*:[^;]*?)\bmonospace\b/gi, '$1var(--monospace, monospace)')
     .replace(/([\s;])font-weight\s*:\s*normal/gi, '$1font-weight: var(--font-weight)')
     .replace(/([\s;])color\s*:\s*black/gi, '$1color: var(--theme-fg-color)')
     .replace(/([\s;])color\s*:\s*#000000/gi, '$1color: var(--theme-fg-color)')
@@ -721,6 +813,27 @@ export const applyThemeModeClass = (document: Document, isDarkMode: boolean) => 
 export const applyScrollModeClass = (document: Document, isScrollMode: boolean) => {
   document.body.classList.remove('scroll-mode', 'paginated-mode');
   document.body.classList.add(isScrollMode ? 'scroll-mode' : 'paginated-mode');
+};
+
+/**
+  @param document should be the global `document`
+*/
+export const applyScrollbarStyle = (document: Document, hideScrollbar: boolean) => {
+  const styleId = 'scrollbar-hide-style';
+  let styleEl = document.getElementById(styleId) as HTMLStyleElement;
+
+  if (hideScrollbar) {
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = styleId;
+      document.head.appendChild(styleEl);
+    }
+    styleEl.textContent = 'foliate-view::part(container) { scrollbar-width: none; }';
+  } else {
+    if (styleEl) {
+      styleEl.textContent = 'foliate-view::part(container) { scrollbar-width: thin; }';
+    }
+  }
 };
 
 export const applyImageStyle = (document: Document) => {
@@ -755,6 +868,12 @@ export const applyImageStyle = (document: Document) => {
       img.classList.add('has-text-siblings');
     }
   });
+  document.querySelectorAll('hr').forEach((hr) => {
+    const computedStyle = window.getComputedStyle(hr);
+    if (computedStyle.backgroundImage && computedStyle.backgroundImage !== 'none') {
+      hr.classList.add('background-img');
+    }
+  });
 };
 
 export const applyTableStyle = (document: Document) => {
@@ -783,9 +902,7 @@ export const applyTableStyle = (document: Document) => {
           const widthUnit = widthStr.replace(widthValue.toString(), '').trim();
 
           if (widthUnit === 'px' || !widthUnit) {
-            rowWidth += widthValue + 6;
-          } else if (widthUnit === '%') {
-            rowWidth += (window.innerWidth * widthValue) / 100;
+            rowWidth += widthValue;
           }
         }
       });
@@ -795,9 +912,15 @@ export const applyTableStyle = (document: Document) => {
       }
     }
 
+    const parentWidth = window.getComputedStyle(parent as Element).width;
+    const parentContainerWidth = parseFloat(parentWidth) || 0;
     if (totalTableWidth > 0) {
       const scale = `calc(min(1, var(--available-width) / ${totalTableWidth}))`;
       table.style.transformOrigin = 'left top';
+      table.style.transform = `scale(${scale})`;
+    } else if (parentContainerWidth > 0) {
+      const scale = `calc(min(1, var(--available-width) / ${parentContainerWidth}))`;
+      table.style.transformOrigin = 'center top';
       table.style.transform = `scale(${scale})`;
     }
   });
@@ -808,6 +931,8 @@ export const keepTextAlignment = (document: Document) => {
     const computedStyle = window.getComputedStyle(el);
     if (computedStyle.textAlign === 'center') {
       el.classList.add('aligned-center');
+    } else if (computedStyle.textAlign === 'left') {
+      el.classList.add('aligned-left');
     } else if (computedStyle.textAlign === 'right') {
       el.classList.add('aligned-right');
     } else if (computedStyle.textAlign === 'justify') {
@@ -825,6 +950,7 @@ export const applyFixedlayoutStyles = (
     themeCode = getThemeCode();
   }
   const { bg, fg, primary, isDarkMode } = themeCode;
+  const isEink = viewSettings.isEink;
   const overrideColor = viewSettings.overrideColor!;
   const invertImgColorInDark = viewSettings.invertImgColorInDark!;
   const darkMixBlendMode = bg === '#000000' ? 'luminosity' : 'overlay';
@@ -846,6 +972,7 @@ export const applyFixedlayoutStyles = (
       position: relative;
       background-color: var(--theme-bg-color);
     }
+    ${isEink ? getEinkSelectionStyles() : ''}
     #canvas {
       display: inline-block;
       width: fit-content;

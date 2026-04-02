@@ -25,11 +25,13 @@ export interface Position {
 export interface TextSelection {
   key: string;
   text: string;
+  page: number;
   range: Range;
   index: number;
   cfi?: string;
   href?: string;
   annotated?: boolean;
+  rect?: Rect;
 }
 
 const frameRect = (frame: Frame, rect?: Rect, sx = 1, sy = 1) => {
@@ -68,17 +70,40 @@ const getIframeElement = (nodeElement: Range | Element): HTMLIFrameElement | nul
 
 const constrainPointWithinRect = (point: Point, rect: Rect, padding: number) => {
   return {
-    x: Math.max(padding, Math.min(point.x, rect.right - padding)),
-    y: Math.max(padding, Math.min(point.y, rect.bottom - padding)),
+    x: Math.max(padding, Math.min(point.x, rect.right - rect.left - padding)),
+    y: Math.max(padding, Math.min(point.y, rect.bottom - rect.top - padding)),
   };
 };
 
+export const isPointerInsideSelection = (selection: Selection, ev: PointerEvent) => {
+  if (selection.rangeCount === 0) return false;
+  const range = selection.getRangeAt(0);
+  const rects = range.getClientRects();
+  const padding = 50;
+  for (let i = 0; i < rects.length; i++) {
+    const rect = rects[i]!;
+    if (
+      ev.clientX >= rect.left - padding &&
+      ev.clientX <= rect.right + padding &&
+      ev.clientY >= rect.top - padding &&
+      ev.clientY <= rect.bottom + padding
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
 export const getPosition = (
-  target: Range | Element,
+  targetElement: Range | Element | TextSelection,
   rect: Rect,
   paddingPx: number,
   isVertical: boolean = false,
 ) => {
+  const { range: target, rect: targetRect } =
+    targetElement && 'range' in targetElement
+      ? targetElement
+      : { range: targetElement, rect: undefined };
   const frameElement = getIframeElement(target);
   const transform = frameElement ? getComputedStyle(frameElement).transform : '';
   const match = transform.match(/matrix\((.+)\)/);
@@ -103,8 +128,12 @@ export const getPosition = (
       left: rect.left + padding.left,
     };
   });
-  const first = frameRect(frame, rects[0], sx, sy);
-  const last = frameRect(frame, rects.at(-1), sx, sy);
+  const first = targetRect
+    ? frameRect(frame, targetRect, sx, sy)
+    : frameRect(frame, rects[0], sx, sy);
+  const last = targetRect
+    ? frameRect(frame, targetRect, sx, sy)
+    : frameRect(frame, rects.at(-1), sx, sy);
 
   if (isVertical) {
     const leftSpace = first.left - rect.left;
@@ -126,11 +155,19 @@ export const getPosition = (
   }
 
   const start = {
-    point: { x: (first.left + first.right) / 2 - rect.left, y: first.top - rect.top - 12 },
+    point: constrainPointWithinRect(
+      { x: (first.left + first.right) / 2 - rect.left, y: first.top - rect.top - 12 },
+      rect,
+      paddingPx,
+    ),
     dir: 'up',
   } as Position;
   const end = {
-    point: { x: (last.left + last.right) / 2 - rect.left, y: last.bottom - rect.top + 6 },
+    point: constrainPointWithinRect(
+      { x: (last.left + last.right) / 2 - rect.left, y: last.bottom - rect.top + 6 },
+      rect,
+      paddingPx,
+    ),
     dir: 'down',
   } as Position;
   const startInView = pointIsInView(start.point);
@@ -182,6 +219,53 @@ export const getPopupPosition = (
   }
 
   return { point: popupPoint, dir: position.dir } as Position;
+};
+
+export const snapRangeToWords = (range: Range): void => {
+  if (typeof Intl === 'undefined' || !Intl.Segmenter) return;
+
+  const isPunctuation = (ch: string) => /^\p{P}|\p{S}$/u.test(ch);
+
+  const snapStartToWordBoundary = () => {
+    const node = range.startContainer;
+    if (node.nodeType !== Node.TEXT_NODE) return;
+    const text = node.textContent ?? '';
+    const offset = range.startOffset;
+    if (offset === 0 || offset >= text.length) return;
+
+    const charAtOffset = text[offset] ?? '';
+    if (isPunctuation(charAtOffset)) return;
+
+    const segmenter = new Intl.Segmenter(undefined, { granularity: 'word' });
+    for (const seg of segmenter.segment(text)) {
+      if (seg.isWordLike && seg.index < offset && seg.index + seg.segment.length > offset) {
+        range.setStart(node, seg.index);
+        break;
+      }
+    }
+  };
+
+  const snapEndToWordBoundary = () => {
+    const node = range.endContainer;
+    if (node.nodeType !== Node.TEXT_NODE) return;
+    const text = node.textContent ?? '';
+    const offset = range.endOffset;
+    if (offset === 0 || offset >= text.length) return;
+
+    const charBeforeOffset = text[offset - 1] ?? '';
+    if (isPunctuation(charBeforeOffset)) return;
+
+    const segmenter = new Intl.Segmenter(undefined, { granularity: 'word' });
+    for (const seg of segmenter.segment(text)) {
+      if (seg.isWordLike && seg.index < offset && seg.index + seg.segment.length > offset) {
+        range.setEnd(node, seg.index + seg.segment.length);
+        break;
+      }
+    }
+  };
+
+  snapStartToWordBoundary();
+  snapEndToWordBoundary();
 };
 
 export const getTextFromRange = (range: Range, rejectTags: string[] = []): string => {

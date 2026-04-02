@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { useEffect, useRef } from 'react';
+import React, { useRef } from 'react';
 import { useKeyDownActions } from '@/hooks/useKeyDownActions';
 
 interface MenuProps {
@@ -10,26 +10,18 @@ interface MenuProps {
 }
 
 const Menu: React.FC<MenuProps> = ({ children, className, style, onCancel }) => {
-  const menuRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   useKeyDownActions({ onCancel, elementRef: menuRef });
-
-  useEffect(() => {
-    setTimeout(() => {
-      if (menuRef.current) {
-        const firstItem = menuRef.current.querySelector('[role="menuitem"]');
-        if (firstItem) {
-          (firstItem as HTMLElement).focus();
-        }
-      }
-    }, 200);
-  }, []);
 
   return (
     <div
       ref={menuRef}
       role='none'
-      className={clsx('max-h-[calc(100vh-96px)] overflow-y-auto', className)}
+      className={clsx(
+        'menu-container max-h-[calc(100vh-96px)] overflow-y-auto border-0',
+        className,
+      )}
       style={style}
     >
       {children}

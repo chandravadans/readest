@@ -67,21 +67,22 @@ vi.mock('@/services/environment', async (importOriginal) => {
 });
 
 import { EnvProvider } from '@/context/EnvContext';
+import { AuthProvider } from '@/context/AuthContext';
+import { DEFAULT_SYSTEM_SETTINGS } from '@/services/constants';
 
 function renderWithProviders(ui: React.ReactNode) {
-  return render(<EnvProvider>{ui}</EnvProvider>);
+  return render(
+    <EnvProvider>
+      <AuthProvider>{ui}</AuthProvider>
+    </EnvProvider>,
+  );
 }
 
 describe('ProofreadRulesManager', () => {
   beforeEach(() => {
     // Reset stores
     (useSettingsStore.setState as unknown as (state: unknown) => void)({
-      settings: {
-        globalViewSettings: { proofreadRules: [] },
-        kosync: {
-          enabled: false,
-        },
-      },
+      settings: DEFAULT_SYSTEM_SETTINGS,
     });
     (useReaderStore.setState as unknown as (state: unknown) => void)({ viewStates: {} });
     useSidebarStore.setState({ sideBarBookKey: null });
@@ -96,6 +97,7 @@ describe('ProofreadRulesManager', () => {
     // Arrange: populate stores
     (useSettingsStore.setState as unknown as (state: unknown) => void)({
       settings: {
+        ...DEFAULT_SYSTEM_SETTINGS,
         globalViewSettings: {
           proofreadRules: [
             {
@@ -122,7 +124,6 @@ describe('ProofreadRulesManager', () => {
             },
           ],
         },
-        kosync: { enabled: false },
       },
     });
 
@@ -150,17 +151,17 @@ describe('ProofreadRulesManager', () => {
     expect(dialog).toBeTruthy();
     // Library (global) rules
     expect(screen.getByText('foo')).toBeTruthy();
-    expect(screen.getByText('bar')).toBeTruthy();
+    expect(screen.getByText("'bar'")).toBeTruthy();
     expect(screen.getByText('hello')).toBeTruthy();
-    expect(screen.getByText('world')).toBeTruthy();
+    expect(screen.getByText("'world'")).toBeTruthy();
   });
 
   it('renders selection rules separately from book/library rules', async () => {
     // Arrange: populate stores with a selection rule persisted in book config
     (useSettingsStore.setState as unknown as (state: unknown) => void)({
       settings: {
+        ...DEFAULT_SYSTEM_SETTINGS,
         globalViewSettings: { proofreadRules: [] },
-        kosync: { enabled: false },
       },
     });
 
@@ -231,11 +232,11 @@ describe('ProofreadRulesManager', () => {
     // Single Instance Rules section
     expect(screen.getByText('Selected Text Rules')).toBeTruthy();
     expect(screen.getByText('only-once')).toBeTruthy();
-    expect(screen.getByText('single-hit')).toBeTruthy();
+    expect(screen.getByText("'single-hit'")).toBeTruthy();
 
     // Book section should still show book-wide rule
     expect(screen.getByText('book-wide')).toBeTruthy();
-    expect(screen.getByText('book-hit')).toBeTruthy();
+    expect(screen.getByText("'book-hit'")).toBeTruthy();
   });
 
   it('displays correct scope labels for different rule types', async () => {
@@ -279,10 +280,10 @@ describe('ProofreadRulesManager', () => {
 
     (useSettingsStore.setState as unknown as (state: unknown) => void)({
       settings: {
+        ...DEFAULT_SYSTEM_SETTINGS,
         globalViewSettings: {
           proofreadRules: [libraryRule],
         },
-        kosync: { enabled: false },
       },
     });
 
@@ -359,8 +360,8 @@ describe('ProofreadRulesManager', () => {
 
     (useSettingsStore.setState as unknown as (state: unknown) => void)({
       settings: {
+        ...DEFAULT_SYSTEM_SETTINGS,
         globalViewSettings: { proofreadRules: [] },
-        kosync: { enabled: false },
       },
     });
 
@@ -402,19 +403,19 @@ describe('ProofreadRulesManager', () => {
 
     const csRuleElement = screen.getByText('case-sensitive').closest('li');
     expect(within(csRuleElement!).getByText(/Case sensitive:/)).toBeTruthy();
-    expect(within(csRuleElement!).getByText(/Yes/)).toBeTruthy();
+    expect(within(csRuleElement!).getAllByText(/Yes/)).toBeTruthy();
 
     const ciRuleElement = screen.getByText('case-insensitive').closest('li');
     expect(within(ciRuleElement!).getByText(/Case sensitive:/)).toBeTruthy();
-    expect(within(ciRuleElement!).getByText(/No/)).toBeTruthy();
+    expect(within(ciRuleElement!).getAllByText(/No/)).toBeTruthy();
   });
 
   it('opens when BookMenu item is clicked (integration)', async () => {
     // Arrange stores
     (useSettingsStore.setState as unknown as (state: unknown) => void)({
       settings: {
+        ...DEFAULT_SYSTEM_SETTINGS,
         globalViewSettings: { proofreadRules: [] },
-        kosync: { enabled: false },
       },
     });
     (useReaderStore.setState as unknown as (state: unknown) => void)({
@@ -448,8 +449,8 @@ describe('ProofreadRulesManager', () => {
   it('shows empty state messages when no rules exist', async () => {
     (useSettingsStore.setState as unknown as (state: unknown) => void)({
       settings: {
+        ...DEFAULT_SYSTEM_SETTINGS,
         globalViewSettings: { proofreadRules: [] },
-        kosync: { enabled: false },
       },
     });
 
@@ -504,10 +505,10 @@ describe('ProofreadRulesManager', () => {
 
     (useSettingsStore.setState as unknown as (state: unknown) => void)({
       settings: {
+        ...DEFAULT_SYSTEM_SETTINGS,
         globalViewSettings: {
           proofreadRules: [libraryRule],
         },
-        kosync: { enabled: false },
       },
     });
 

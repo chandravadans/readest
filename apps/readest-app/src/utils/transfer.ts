@@ -61,11 +61,13 @@ export const webDownload = async (
     throw new Error(UploadFileError.DownloadFailed);
   }
 
+  const responseHeaders = Object.fromEntries(response.headers.entries());
   const contentLength =
     response.headers.get('Content-Length') || response.headers.get('X-Content-Length');
-  if (!contentLength) throw new Error('Cannot track progress: Content-Length missing');
+  if (!contentLength && onProgress)
+    throw new Error('Cannot track progress: Content-Length missing');
 
-  const totalSize = parseInt(contentLength, 10);
+  const totalSize = parseInt(contentLength || '0', 10);
   let receivedSize = 0;
   const reader = response.body!.getReader();
   const chunks: Uint8Array[] = [];
@@ -87,7 +89,7 @@ export const webDownload = async (
     }
   }
 
-  return new Blob(chunks as BlobPart[]);
+  return { headers: responseHeaders, blob: new Blob(chunks as BlobPart[]) };
 };
 
 export const tauriUpload = async (
@@ -123,7 +125,8 @@ export const tauriDownload = async (
   headers?: Record<string, string>,
   body?: string,
   singleThreaded?: boolean,
-): Promise<void> => {
+  skipSslVerification?: boolean,
+): Promise<Record<string, string>> => {
   const ids = new Uint32Array(1);
   window.crypto.getRandomValues(ids);
   const id = ids[0];
@@ -133,7 +136,7 @@ export const tauriDownload = async (
     onProgress.onmessage = progressHandler;
   }
 
-  await invoke('download_file', {
+  const responseHeaders = await invoke<Record<string, string>>('download_file', {
     id,
     url,
     filePath,
@@ -141,5 +144,7 @@ export const tauriDownload = async (
     onProgress,
     body,
     singleThreaded,
+    skipSslVerification,
   });
+  return responseHeaders;
 };

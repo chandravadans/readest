@@ -53,7 +53,7 @@
     WriteRegStr HKCR ".cbr\ShellEx\${SHELL_THUMBNAIL_HANDLER}" "" "${CLSID_READEST_THUMBNAIL}"
     
     DetailPrint "Thumbnail provider registered successfully."
-    
+
     ; Refresh shell to apply changes - SHCNE_ASSOCCHANGED
     System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
 !macroend

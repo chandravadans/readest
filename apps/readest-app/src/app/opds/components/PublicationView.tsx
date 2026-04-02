@@ -9,6 +9,7 @@ import { OPDSLink, OPDSPublication, REL, SYMBOL } from '@/types/opds';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getFileExtFromMimeType } from '@/libs/document';
 import { formatDate, formatLanguage } from '@/utils/book';
+import { getImportErrorMessage, ImportError } from '@/services/errors';
 import { eventDispatcher } from '@/utils/event';
 import { navigateToReader } from '@/utils/nav';
 import { CachedImage } from '@/components/CachedImage';
@@ -56,9 +57,12 @@ export function PublicationView({
   const imageUrl = coverImage ? resolveURL(coverImage.href, baseURL) : null;
 
   const authors = useMemo(() => {
-    return publication.metadata?.author?.map((author) =>
-      typeof author === 'string' ? author : author.name,
-    );
+    const author = publication.metadata?.author;
+    if (!author) return undefined;
+
+    const authorList = Array.isArray(author) ? author : [author];
+
+    return authorList.map((a) => (typeof a === 'string' ? a : a?.name)).filter(Boolean);
   }, [publication.metadata?.author]);
 
   const acquisitionLinks = useMemo(() => {
@@ -93,10 +97,19 @@ export function PublicationView({
       eventDispatcher.dispatch('toast', { type: 'success', message: _('Download completed') });
     } catch (error) {
       console.error('Download failed:', error);
-      eventDispatcher.dispatch('toast', {
-        type: 'error',
-        message: _('Download failed') + `:\n${href}`,
-      });
+      if (error instanceof ImportError) {
+        const friendlyMsg = _(getImportErrorMessage(error.message));
+        eventDispatcher.dispatch('toast', {
+          type: 'error',
+          message: _('Import failed') + `:\n${friendlyMsg}`,
+          timeout: 5000,
+        });
+      } else {
+        eventDispatcher.dispatch('toast', {
+          type: 'error',
+          message: _('Download failed') + `:\n${href}`,
+        });
+      }
     } finally {
       setDownloading(false);
       setProgress(null);
@@ -112,7 +125,7 @@ export function PublicationView({
     return _('Download');
   };
 
-  const content = publication.metadata?.[SYMBOL.CONTENT];
+  const content = publication.metadata?.[SYMBOL.CONTENT] || publication.metadata?.content;
   const description = publication.metadata?.description;
 
   return (
@@ -162,25 +175,19 @@ export function PublicationView({
                   ) : (
                     <Dropdown
                       label={_('Download')}
-                      className='dropdown-bottom flex justify-center'
-                      buttonClassName='btn btn-ghost p-0 hover:bg-transparent'
+                      className='dropdown-bottom dropdown-center flex justify-center'
+                      buttonClassName={clsx(
+                        'btn btn-primary min-w-20 rounded-3xl p-0 bg-primary hover:bg-primary',
+                        downloadedBook && 'btn-success',
+                      )}
                       disabled={downloading}
                       toggleButton={
-                        <div
-                          role='button'
-                          tabIndex={0}
-                          className={clsx(
-                            `btn btn-primary min-w-20 rounded-3xl ${downloading ? 'btn-disabled' : ''}`,
-                            downloadedBook && 'btn-success',
-                          )}
-                        >
-                          {downloadedBook ? _('Open') : getAcquisitionLabel(rel)}
-                        </div>
+                        <div>{downloadedBook ? _('Open') : getAcquisitionLabel(rel)}</div>
                       }
                     >
                       <div
                         className={clsx(
-                          'delete-menu dropdown-content dropdown-center no-triangle',
+                          'delete-menu dropdown-content no-triangle !relative',
                           'border-base-300 !bg-base-200 z-20 mt-2 max-w-[80vw] shadow-2xl',
                         )}
                       >

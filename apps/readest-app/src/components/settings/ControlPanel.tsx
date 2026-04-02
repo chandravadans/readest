@@ -11,7 +11,9 @@ import { getStyles } from '@/utils/style';
 import { getMaxInlineSize } from '@/utils/config';
 import { saveSysSettings, saveViewSettings } from '@/helpers/settings';
 import { SettingsPanelPanelProp } from './SettingsDialog';
+import { annotationToolQuickActions } from '@/app/reader/components/annotator/AnnotationTools';
 import NumberInput from './NumberInput';
+import Select from '../Select';
 
 const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }) => {
   const _ = useTranslation();
@@ -25,15 +27,27 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
   const viewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
 
   const [isScrolledMode, setScrolledMode] = useState(viewSettings.scrolled);
-  const [isContinuousScroll, setIsContinuousScroll] = useState(viewSettings.continuousScroll);
+  const [noContinuousScroll, setNoContinuousScroll] = useState(viewSettings.noContinuousScroll);
   const [scrollingOverlap, setScrollingOverlap] = useState(viewSettings.scrollingOverlap);
+  const [hideScrollbar, setHideScrollbar] = useState(viewSettings.hideScrollbar || false);
   const [volumeKeysToFlip, setVolumeKeysToFlip] = useState(viewSettings.volumeKeysToFlip);
+  const [showPaginationButtons, setShowPaginationButtons] = useState(
+    viewSettings.showPaginationButtons,
+  );
   const [isDisableClick, setIsDisableClick] = useState(viewSettings.disableClick);
   const [fullscreenClickArea, setFullscreenClickArea] = useState(viewSettings.fullscreenClickArea);
   const [swapClickArea, setSwapClickArea] = useState(viewSettings.swapClickArea);
   const [isDisableDoubleClick, setIsDisableDoubleClick] = useState(viewSettings.disableDoubleClick);
+  const [enableAnnotationQuickActions, setEnableAnnotationQuickActions] = useState(
+    viewSettings.enableAnnotationQuickActions,
+  );
+  const [annotationQuickAction, setAnnotationQuickAction] = useState(
+    viewSettings.annotationQuickAction,
+  );
+  const [copyToNotebook, setCopyToNotebook] = useState(viewSettings.copyToNotebook);
   const [animated, setAnimated] = useState(viewSettings.animated);
   const [isEink, setIsEink] = useState(viewSettings.isEink);
+  const [isColorEink, setIsColorEink] = useState(viewSettings.isColorEink);
   const [autoScreenBrightness, setAutoScreenBrightness] = useState(settings.autoScreenBrightness);
   const [allowScript, setAllowScript] = useState(viewSettings.allowScript);
 
@@ -42,14 +56,20 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
   const handleReset = () => {
     resetToDefaults({
       scrolled: setScrolledMode,
-      continuousScroll: setIsContinuousScroll,
+      noContinuousScroll: setNoContinuousScroll,
       scrollingOverlap: setScrollingOverlap,
+      hideScrollbar: setHideScrollbar,
       volumeKeysToFlip: setVolumeKeysToFlip,
+      showPaginationButtons: setShowPaginationButtons,
       disableClick: setIsDisableClick,
       swapClickArea: setSwapClickArea,
       animated: setAnimated,
       isEink: setIsEink,
       allowScript: setAllowScript,
+      fullscreenClickArea: setFullscreenClickArea,
+      disableDoubleClick: setIsDisableDoubleClick,
+      enableAnnotationQuickActions: setEnableAnnotationQuickActions,
+      copyToNotebook: setCopyToNotebook,
     });
   };
 
@@ -71,9 +91,20 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
   }, [isScrolledMode]);
 
   useEffect(() => {
-    saveViewSettings(envConfig, bookKey, 'continuousScroll', isContinuousScroll, false, false);
+    if (noContinuousScroll === viewSettings.noContinuousScroll) return;
+    saveViewSettings(envConfig, bookKey, 'noContinuousScroll', noContinuousScroll);
+    if (noContinuousScroll) {
+      getView(bookKey)?.renderer.setAttribute('no-continuous-scroll', '');
+    } else {
+      getView(bookKey)?.renderer.removeAttribute('no-continuous-scroll');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isContinuousScroll]);
+  }, [noContinuousScroll]);
+
+  useEffect(() => {
+    saveViewSettings(envConfig, bookKey, 'hideScrollbar', hideScrollbar, false, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hideScrollbar]);
 
   useEffect(() => {
     if (scrollingOverlap === viewSettings.scrollingOverlap) return;
@@ -92,6 +123,18 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [volumeKeysToFlip]);
+
+  useEffect(() => {
+    saveViewSettings(
+      envConfig,
+      bookKey,
+      'showPaginationButtons',
+      showPaginationButtons,
+      false,
+      false,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPaginationButtons]);
 
   useEffect(() => {
     saveViewSettings(envConfig, bookKey, 'disableClick', isDisableClick, false, false);
@@ -135,6 +178,11 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
   }, [isEink]);
 
   useEffect(() => {
+    saveViewSettings(envConfig, bookKey, 'isColorEink', isColorEink);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isColorEink]);
+
+  useEffect(() => {
     if (autoScreenBrightness === settings.autoScreenBrightness) return;
     saveSysSettings(envConfig, 'autoScreenBrightness', autoScreenBrightness);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -148,9 +196,45 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowScript]);
 
+  useEffect(() => {
+    saveViewSettings(
+      envConfig,
+      bookKey,
+      'enableAnnotationQuickActions',
+      enableAnnotationQuickActions,
+      false,
+      false,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enableAnnotationQuickActions]);
+
+  useEffect(() => {
+    saveViewSettings(envConfig, bookKey, 'copyToNotebook', copyToNotebook, false, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [copyToNotebook]);
+
+  const getQuickActionOptions = () => {
+    return [
+      {
+        value: '',
+        label: _('None'),
+      },
+      ...annotationToolQuickActions.map((button) => ({
+        value: button.type,
+        label: _(button.label),
+      })),
+    ];
+  };
+
+  const handleSelectAnnotationQuickAction = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const action = event.target.value as typeof annotationQuickAction;
+    setAnnotationQuickAction(action);
+    saveViewSettings(envConfig, bookKey, 'annotationQuickAction', action, false, true);
+  };
+
   return (
     <div className='my-4 w-full space-y-6'>
-      <div className='w-full'>
+      <div className='w-full' data-setting-id='settings.control.scrolledMode'>
         <h2 className='mb-2 font-medium'>{_('Scroll')}</h2>
         <div className='card border-base-200 bg-base-100 border shadow'>
           <div className='divide-base-200 divide-y'>
@@ -160,16 +244,21 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
                 type='checkbox'
                 className='toggle'
                 checked={isScrolledMode}
+                disabled={bookData?.isFixedLayout}
                 onChange={() => setScrolledMode(!isScrolledMode)}
               />
             </div>
-            <div className='config-item'>
-              <span className=''>{_('Continuous Scroll')}</span>
+            <div
+              className='config-item'
+              data-setting-id='settings.control.scroll.noContinuousScroll'
+            >
+              <span className=''>{_('Single Section Scroll')}</span>
               <input
                 type='checkbox'
                 className='toggle'
-                checked={isContinuousScroll}
-                onChange={() => setIsContinuousScroll(!isContinuousScroll)}
+                checked={noContinuousScroll}
+                disabled={!viewSettings.scrolled}
+                onChange={() => setNoContinuousScroll(!noContinuousScroll)}
               />
             </div>
             <NumberInput
@@ -180,12 +269,23 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
               min={0}
               max={200}
               step={10}
+              data-setting-id='settings.control.overlapPixels'
             />
+            <div className='config-item' data-setting-id='settings.control.scroll.hideScrollbar'>
+              <span className=''>{_('Hide Scrollbar')}</span>
+              <input
+                type='checkbox'
+                className='toggle'
+                checked={hideScrollbar}
+                disabled={!viewSettings.scrolled}
+                onChange={() => setHideScrollbar(!hideScrollbar)}
+              />
+            </div>
           </div>
         </div>
       </div>
 
-      <div className='w-full'>
+      <div className='w-full' data-setting-id='settings.control.clickToPaginate'>
         <h2 className='mb-2 font-medium'>{_('Pagination')}</h2>
         <div className='card border-base-200 bg-base-100 border shadow'>
           <div className='divide-base-200'>
@@ -200,7 +300,7 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
                 onChange={() => setIsDisableClick(!isDisableClick)}
               />
             </div>
-            <div className='config-item'>
+            <div className='config-item' data-setting-id='settings.control.clickBothSides'>
               <span className=''>
                 {appService?.isMobileApp ? _('Tap Both Sides') : _('Click Both Sides')}
               </span>
@@ -212,7 +312,7 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
                 onChange={() => setFullscreenClickArea(!fullscreenClickArea)}
               />
             </div>
-            <div className='config-item'>
+            <div className='config-item' data-setting-id='settings.control.swapClickSides'>
               <span className=''>
                 {appService?.isMobileApp ? _('Swap Tap Sides') : _('Swap Click Sides')}
               </span>
@@ -224,7 +324,7 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
                 onChange={() => setSwapClickArea(!swapClickArea)}
               />
             </div>
-            <div className='config-item'>
+            <div className='config-item' data-setting-id='settings.control.disableDoubleClick'>
               <span className=''>
                 {appService?.isMobileApp ? _('Disable Double Tap') : _('Disable Double Click')}
               </span>
@@ -246,11 +346,55 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
                 />
               </div>
             )}
+            <div className='config-item' data-setting-id='settings.control.showPaginationButtons'>
+              <span className=''>{_('Show Page Navigation Buttons')}</span>
+              <input
+                type='checkbox'
+                className='toggle'
+                checked={showPaginationButtons}
+                onChange={() => setShowPaginationButtons(!showPaginationButtons)}
+              />
+            </div>
           </div>
         </div>
       </div>
 
-      <div className='w-full'>
+      <div className='w-full' data-setting-id='settings.control.enableQuickActions'>
+        <h2 className='mb-2 font-medium'>{_('Annotation Tools')}</h2>
+        <div className='card border-base-200 bg-base-100 border shadow'>
+          <div className='divide-base-200 divide-y'>
+            <div className='config-item'>
+              <span className=''>{_('Enable Quick Actions')}</span>
+              <input
+                type='checkbox'
+                className='toggle'
+                checked={enableAnnotationQuickActions}
+                onChange={() => setEnableAnnotationQuickActions(!enableAnnotationQuickActions)}
+              />
+            </div>
+            <div className='config-item' data-setting-id='settings.control.quickAction'>
+              <span className=''>{_('Quick Action')}</span>
+              <Select
+                value={annotationQuickAction || ''}
+                onChange={handleSelectAnnotationQuickAction}
+                options={getQuickActionOptions()}
+                disabled={!enableAnnotationQuickActions}
+              />
+            </div>
+            <div className='config-item' data-setting-id='settings.control.copyToNotebook'>
+              <span className=''>{_('Copy to Notebook')}</span>
+              <input
+                type='checkbox'
+                className='toggle'
+                checked={copyToNotebook}
+                onChange={() => setCopyToNotebook(!copyToNotebook)}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className='w-full' data-setting-id='settings.control.pagingAnimation'>
         <h2 className='mb-2 font-medium'>{_('Animation')}</h2>
         <div className='card border-base-200 bg-base-100 border shadow'>
           <div className='divide-base-200 divide-y'>
@@ -268,7 +412,7 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
       </div>
 
       {(appService?.isMobileApp || appService?.appPlatform === 'web') && (
-        <div className='w-full'>
+        <div className='w-full' data-setting-id='settings.control.einkMode'>
           <h2 className='mb-2 font-medium'>{_('Device')}</h2>
           <div className='card border-base-200 bg-base-100 border shadow'>
             <div className='divide-base-200 divide-y'>
@@ -283,9 +427,21 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
                   />
                 </div>
               )}
+              {(appService?.isAndroidApp || appService?.appPlatform === 'web') && (
+                <div className='config-item' data-setting-id='settings.control.colorEinkMode'>
+                  <span className=''>{_('Color E-Ink Mode')}</span>
+                  <input
+                    type='checkbox'
+                    className='toggle'
+                    disabled={!isEink}
+                    checked={isColorEink}
+                    onChange={() => setIsColorEink(!isColorEink)}
+                  />
+                </div>
+              )}
               {appService?.isMobileApp && (
                 <div className='config-item'>
-                  <span className=''>{_('Auto Screen Brightness')}</span>
+                  <span className=''>{_('System Screen Brightness')}</span>
                   <input
                     type='checkbox'
                     className='toggle'
@@ -299,7 +455,7 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
         </div>
       )}
 
-      <div className='w-full'>
+      <div className='w-full' data-setting-id='settings.control.allowJavascript'>
         <h2 className='mb-2 font-medium'>{_('Security')}</h2>
         <div className='card border-base-200 bg-base-100 border shadow'>
           <div className='divide-base-200 divide-y'>

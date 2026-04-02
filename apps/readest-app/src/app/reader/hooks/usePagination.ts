@@ -8,11 +8,12 @@ import { useDeviceControlStore } from '@/store/deviceStore';
 import { eventDispatcher } from '@/utils/event';
 import { isTauriAppPlatform } from '@/services/environment';
 import { tauriGetWindowLogicalPosition } from '@/utils/window';
+import { getReadingRulerMoveDirection } from '../utils/readingRuler';
 
 export type ScrollSource = 'touch' | 'mouse';
 
 type PaginationSide = 'left' | 'right' | 'up' | 'down';
-type PaginationMode = 'page' | 'section';
+type PaginationMode = 'pan' | 'page' | 'section';
 
 const swapLeftRight = (side: PaginationSide) => {
   if (side === 'left') return 'right';
@@ -20,11 +21,36 @@ const swapLeftRight = (side: PaginationSide) => {
   return side;
 };
 
+const isPanningView = (view: FoliateView | null, viewSettings: ViewSettings | null | undefined) => {
+  if (!view || !viewSettings) return false;
+  return (
+    view.book.rendition?.layout === 'pre-paginated' &&
+    (viewSettings.zoomLevel > 100 || viewSettings.zoomMode !== 'fit-page')
+  );
+};
+
+const hasHorizontalPanning = (
+  view: FoliateView | null,
+  viewSettings: ViewSettings | null | undefined,
+) => {
+  if (!view || !viewSettings) return false;
+  return isPanningView(view, viewSettings) && view.isOverflowX();
+};
+
+const hasVerticalPanning = (
+  view: FoliateView | null,
+  viewSettings: ViewSettings | null | undefined,
+) => {
+  if (!view || !viewSettings) return false;
+  return isPanningView(view, viewSettings) && view.isOverflowY();
+};
+
 export const viewPagination = (
   view: FoliateView | null,
   viewSettings: ViewSettings | null | undefined,
   side: PaginationSide,
   mode: PaginationMode = 'page',
+  panDistance: number = 50,
 ) => {
   if (!view || !viewSettings) return;
   const renderer = view.renderer;
@@ -38,33 +64,45 @@ export const viewPagination = (
     const scrollingOverlap = viewSettings.scrollingOverlap;
     const distance = size - scrollingOverlap - (showHeader ? 44 : 0) - (showFooter ? 44 : 0);
     switch (mode) {
-      case 'page':
-        return side === 'left' || side === 'up' ? view.prev(distance) : view.next(distance);
       case 'section':
         if (side === 'left' || side === 'up') {
           return view.renderer.prevSection?.();
         } else {
           return view.renderer.nextSection?.();
         }
+      case 'pan':
+      case 'page':
+      default:
+        return side === 'left' || side === 'up' ? view.prev(distance) : view.next(distance);
+    }
+  } else if (mode === 'pan' && isPanningView(view, viewSettings)) {
+    if (hasHorizontalPanning(view, viewSettings) && (side === 'left' || side === 'right')) {
+      return view.pan(side === 'left' ? -panDistance : panDistance, 0);
+    } else if (hasVerticalPanning(view, viewSettings) && (side === 'up' || side === 'down')) {
+      return view.pan(0, side === 'up' ? -panDistance : panDistance);
+    } else {
+      return side === 'left' || side === 'up' ? view.prev() : view.next();
     }
   } else {
     switch (mode) {
-      case 'page':
-        return side === 'left' || side === 'up' ? view.prev() : view.next();
       case 'section':
         if (side === 'left' || side === 'up') {
           return view.renderer.prevSection?.();
         } else {
           return view.renderer.nextSection?.();
         }
+      case 'pan':
+      case 'page':
+      default:
+        return side === 'left' || side === 'up' ? view.prev() : view.next();
     }
   }
 };
 
 export const usePagination = (
   bookKey: string,
-  viewRef: React.MutableRefObject<FoliateView | null>,
-  containerRef: React.RefObject<HTMLDivElement>,
+  viewRef: React.RefObject<FoliateView | null>,
+  containerRef: React.RefObject<HTMLDivElement | null>,
 ) => {
   const { appService } = useEnv();
   const { getBookData } = useBookDataStore();
@@ -78,6 +116,13 @@ export const usePagination = (
     const viewState = getViewState(bookKey);
     const bookData = getBookData(bookKey);
     if (!viewState?.inited || !bookData) return;
+
+    const dispatchReadingRulerMove = (side: PaginationSide) => {
+      return eventDispatcher.dispatchSync('reading-ruler-move', {
+        bookKey,
+        direction: getReadingRulerMoveDirection(side, viewRef.current?.book.dir),
+      });
+    };
 
     if (msg instanceof MessageEvent) {
       if (msg.data && msg.data.bookKey === bookKey) {
@@ -114,42 +159,49 @@ export const usePagination = (
               ) {
                 // toggle visibility of the header bar and the footer bar
                 setHoveredBookKey(hoveredBookKey ? null : bookKey);
-              } else {
-                if (hoveredBookKey) {
-                  setHoveredBookKey(null);
-                  return;
-                }
-                if (!viewSettings.disableClick! && screenX >= viewCenterX) {
-                  if (viewSettings.fullscreenClickArea) {
-                    viewPagination(viewRef.current, viewSettings, 'down');
-                  } else if (viewSettings.swapClickArea) {
-                    viewPagination(viewRef.current, viewSettings, 'left');
-                  } else {
-                    viewPagination(viewRef.current, viewSettings, 'right');
-                  }
-                } else if (!viewSettings.disableClick! && screenX < viewCenterX) {
-                  if (viewSettings.fullscreenClickArea) {
-                    viewPagination(viewRef.current, viewSettings, 'down');
-                  } else if (viewSettings.swapClickArea) {
-                    viewPagination(viewRef.current, viewSettings, 'right');
-                  } else {
-                    viewPagination(viewRef.current, viewSettings, 'left');
-                  }
-                }
+                return;
               }
+
+              if (hoveredBookKey) {
+                setHoveredBookKey(null);
+                return;
+              }
+
+              const side: PaginationSide =
+                screenX >= viewCenterX
+                  ? viewSettings.fullscreenClickArea
+                    ? 'down'
+                    : viewSettings.swapClickArea
+                      ? 'left'
+                      : 'right'
+                  : viewSettings.fullscreenClickArea
+                    ? 'down'
+                    : viewSettings.swapClickArea
+                      ? 'right'
+                      : 'left';
+
+              if (viewSettings.readingRulerEnabled && dispatchReadingRulerMove(side)) {
+                return;
+              }
+
+              viewPagination(viewRef.current, viewSettings, side);
             }
           }
         } else if (
           msg.data.type === 'iframe-wheel' &&
           !viewSettings.scrolled &&
-          (!bookData.isFixedLayout || viewSettings.zoomLevel <= 100)
+          !isPanningView(viewRef.current, viewSettings)
         ) {
           // The wheel event is handled by the iframe itself in scrolled mode.
-          const { deltaY } = msg.data;
+          const { deltaY, deltaX } = msg.data;
           if (deltaY > 0) {
-            viewRef.current?.next(1);
+            viewPagination(viewRef.current, viewSettings, 'down');
           } else if (deltaY < 0) {
-            viewRef.current?.prev(1);
+            viewPagination(viewRef.current, viewSettings, 'up');
+          } else if (deltaX < 0) {
+            viewPagination(viewRef.current, viewSettings, 'left');
+          } else if (deltaX > 0) {
+            viewPagination(viewRef.current, viewSettings, 'right');
           }
         } else if (msg.data.type === 'iframe-mouseup') {
           if (msg.data.button === 3) {
@@ -165,14 +217,21 @@ export const usePagination = (
         const { keyName } = msg.detail;
         setHoveredBookKey('');
         if (keyName === 'VolumeUp') {
+          if (viewSettings.readingRulerEnabled && dispatchReadingRulerMove('up')) {
+            return;
+          }
           viewPagination(viewRef.current, viewSettings, 'up');
         } else if (keyName === 'VolumeDown') {
+          if (viewSettings.readingRulerEnabled && dispatchReadingRulerMove('down')) {
+            return;
+          }
           viewPagination(viewRef.current, viewSettings, 'down');
         }
       } else if (
         msg.type === 'touch-swipe' &&
         bookData.isFixedLayout &&
-        viewSettings!.zoomLevel <= 100
+        !viewSettings?.scrolled &&
+        !isPanningView(viewRef.current, viewSettings)
       ) {
         const { deltaX, deltaY, deltaT } = msg.detail;
         const vx = Math.abs(deltaX / deltaT);
@@ -200,45 +259,6 @@ export const usePagination = (
     }
   };
 
-  const handleContinuousScroll = (mode: ScrollSource, scrollDelta: number, threshold: number) => {
-    const renderer = viewRef.current?.renderer;
-    const viewSettings = getViewSettings(bookKey)!;
-    const bookData = getBookData(bookKey)!;
-    // Currently continuous scroll is not supported in pre-paginated layout
-    if (bookData.bookDoc?.rendition?.layout === 'pre-paginated') return;
-
-    if (renderer && viewSettings.scrolled && viewSettings.continuousScroll) {
-      const doScroll = () => {
-        // may have overscroll where the start is greater than 0
-        if (renderer.start <= scrollDelta && scrollDelta > threshold) {
-          setTimeout(() => {
-            viewRef.current?.prev(renderer.start + 1);
-          }, 100);
-          // sometimes viewSize has subpixel value that the end never reaches
-        } else if (
-          Math.ceil(renderer.end) - scrollDelta >= renderer.viewSize &&
-          scrollDelta < -threshold
-        ) {
-          setTimeout(() => {
-            viewRef.current?.next(renderer.viewSize - Math.floor(renderer.end) + 1);
-          }, 100);
-        }
-      };
-      if (mode === 'mouse') {
-        // we can always get mouse wheel events
-        doScroll();
-      } else if (mode === 'touch') {
-        // when the document height is less than the viewport height, we can't get the relocate event
-        if (renderer.size >= renderer.viewSize) {
-          doScroll();
-        } else {
-          // scroll after the relocate event
-          renderer.addEventListener('relocate', () => doScroll(), { once: true });
-        }
-      }
-    }
-  };
-
   useEffect(() => {
     if (!appService?.isMobileApp) return;
 
@@ -259,6 +279,5 @@ export const usePagination = (
 
   return {
     handlePageFlip,
-    handleContinuousScroll,
   };
 };

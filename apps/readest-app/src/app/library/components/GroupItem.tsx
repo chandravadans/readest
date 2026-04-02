@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 import { MdCheckCircle, MdCheckCircleOutline, MdChevronRight, MdChevronLeft } from 'react-icons/md';
 import { useEnv } from '@/context/EnvContext';
+import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { BooksGroup } from '@/types/book';
 import { LibraryViewModeType } from '@/types/settings';
@@ -15,6 +16,7 @@ interface GroupItemProps {
 }
 
 const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupSelected }) => {
+  const _ = useTranslation();
   const { appService } = useEnv();
   const iconSize15 = useResponsiveSize(15);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -99,7 +101,7 @@ const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupS
     <div className={clsx('group-item', appService?.hasContextMenu ? 'cursor-pointer' : '')}>
       <div
         className={clsx(
-          'relative flex overflow-hidden rounded',
+          'groupitem-main relative flex overflow-hidden rounded',
           mode === 'grid' && 'bg-base-100 aspect-[28/41] items-center justify-center shadow-md',
           mode === 'list' && 'items-center justify-start gap-4 py-2',
         )}
@@ -147,6 +149,7 @@ const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupS
             <div className='absolute left-[-0.5px] top-0 h-full w-12'>
               <div className='from-base-200/85 via-base-200/20 absolute inset-0 bg-gradient-to-r to-transparent'></div>
               <button
+                aria-label={_('Scroll left')}
                 onClick={handleLeftArrowClick}
                 onPointerDown={(e) => stopEvent(e)}
                 onPointerUp={(e) => stopEvent(e)}
@@ -168,6 +171,7 @@ const GroupItem: React.FC<GroupItemProps> = ({ mode, group, isSelectMode, groupS
             <div className='absolute right-[-0.5px] top-0 h-full w-12'>
               <div className='from-base-200/85 via-base-200/20 absolute inset-0 bg-gradient-to-l to-transparent'></div>
               <button
+                aria-label={_('Scroll right')}
                 onClick={handleRightArrowClick}
                 onPointerDown={(e) => stopEvent(e)}
                 onPointerUp={(e) => stopEvent(e)}

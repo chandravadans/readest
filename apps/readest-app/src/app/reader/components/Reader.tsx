@@ -15,14 +15,17 @@ import { useNotebookStore } from '@/store/notebookStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useDeviceControlStore } from '@/store/deviceStore';
 import { useScreenWakeLock } from '@/hooks/useScreenWakeLock';
+import { useTransferQueue } from '@/hooks/useTransferQueue';
 import { eventDispatcher } from '@/utils/event';
 import { interceptWindowOpen } from '@/utils/open';
 import { mountAdditionalFonts } from '@/styles/fonts';
 import { isTauriAppPlatform } from '@/services/environment';
 import { getSysFontsList, setSystemUIVisibility } from '@/utils/bridge';
 import { AboutWindow } from '@/components/AboutWindow';
+import { KeyboardShortcutsHelp } from '@/components/KeyboardShortcutsHelp';
 import { UpdaterWindow } from '@/components/UpdaterWindow';
 import { KOSyncSettingsWindow } from './KOSyncSettings';
+import { ReadwiseSettingsWindow } from './ReadwiseSettings';
 import { ProofreadRulesManager } from './ProofreadRules';
 import { Toast } from '@/components/Toast';
 import { getLocale } from '@/utils/misc';
@@ -54,18 +57,21 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
   const router = useRouter();
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
-  const { sideBarBookKey } = useSidebarStore();
-  const { hoveredBookKey, getView } = useReaderStore();
-  const { getScreenBrightness, setScreenBrightness } = useDeviceControlStore();
-  const { isSideBarVisible, getIsSideBarVisible, setSideBarVisible } = useSidebarStore();
-  const { isNotebookVisible, getIsNotebookVisible, setNotebookVisible } = useNotebookStore();
-  const { isDarkMode, systemUIAlwaysHidden, isRoundedWindow } = useThemeStore();
-  const { showSystemUI, dismissSystemUI } = useThemeStore();
-  const { acquireBackKeyInterception, releaseBackKeyInterception } = useDeviceControlStore();
   const { libraryLoaded } = useLibrary();
+  const { sideBarBookKey } = useSidebarStore();
+  const { hoveredBookKey } = useReaderStore();
+  const { showSystemUI, dismissSystemUI } = useThemeStore();
+  const { getScreenBrightness, setScreenBrightness } = useDeviceControlStore();
+  const { acquireBackKeyInterception, releaseBackKeyInterception } = useDeviceControlStore();
+  const { isSideBarVisible, isSideBarPinned } = useSidebarStore();
+  const { getIsSideBarVisible, setSideBarVisible } = useSidebarStore();
+  const { isNotebookVisible, isNotebookPinned } = useNotebookStore();
+  const { getIsNotebookVisible, setNotebookVisible } = useNotebookStore();
+  const { isDarkMode, systemUIAlwaysHidden, isRoundedWindow } = useThemeStore();
 
   useTheme({ systemUIVisible: settings.alwaysShowStatusBar, appThemeColor: 'base-100' });
   useScreenWakeLock(settings.screenWakeLock);
+  useTransferQueue(libraryLoaded, 5000);
 
   useEffect(() => {
     mountAdditionalFonts(document);
@@ -98,14 +104,11 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
   }, [appService]);
 
   const handleKeyDown = (event: CustomEvent) => {
-    const view = getView(sideBarBookKey!);
     if (event.detail.keyName === 'Back') {
-      if (getIsSideBarVisible()) {
+      if (getIsSideBarVisible() && !isSideBarPinned) {
         setSideBarVisible(false);
-      } else if (getIsNotebookVisible()) {
+      } else if (getIsNotebookVisible() && !isNotebookPinned) {
         setNotebookVisible(false);
-      } else if (view?.history.canGoBack) {
-        view.history.back();
       } else {
         eventDispatcher.dispatch('close-reader');
         router.back();
@@ -134,7 +137,14 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appService?.isAndroidApp, sideBarBookKey, isSideBarVisible, isNotebookVisible]);
+  }, [
+    appService?.isAndroidApp,
+    sideBarBookKey,
+    isSideBarPinned,
+    isSideBarVisible,
+    isNotebookPinned,
+    isNotebookVisible,
+  ]);
 
   useEffect(() => {
     if (!appService?.isMobileApp) return;
@@ -159,8 +169,10 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
       <Suspense fallback={<div className='full-height'></div>}>
         <ReaderContent ids={ids} settings={settings} />
         <AboutWindow />
+        <KeyboardShortcutsHelp />
         <UpdaterWindow />
         <KOSyncSettingsWindow />
+        <ReadwiseSettingsWindow />
         <ProofreadRulesManager />
         <Toast />
       </Suspense>

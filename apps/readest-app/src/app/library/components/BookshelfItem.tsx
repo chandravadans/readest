@@ -1,21 +1,21 @@
 import clsx from 'clsx';
 import { useCallback } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { navigateToLibrary, navigateToReader, showReaderWindow } from '@/utils/nav';
 import { useEnv } from '@/context/EnvContext';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useAppRouter } from '@/hooks/useAppRouter';
 import { useLongPress } from '@/hooks/useLongPress';
 import { Menu, MenuItem } from '@tauri-apps/api/menu';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { eventDispatcher } from '@/utils/event';
 import { getOSPlatform } from '@/utils/misc';
 import { throttle } from '@/utils/throttle';
+import { navigateToReader, showReaderWindow } from '@/utils/nav';
 import { LibraryCoverFitType, LibraryViewModeType } from '@/types/settings';
 import { BOOK_UNGROUPED_ID, BOOK_UNGROUPED_NAME } from '@/services/constants';
 import { FILE_REVEAL_LABELS, FILE_REVEAL_PLATFORMS } from '@/utils/os';
-import { Book, BooksGroup } from '@/types/book';
+import { Book, BooksGroup, ReadingStatus } from '@/types/book';
 import { md5Fingerprint } from '@/utils/md5';
 import BookItem from './BookItem';
 import GroupItem from './GroupItem';
@@ -24,51 +24,60 @@ export const generateBookshelfItems = (
   books: Book[],
   parentGroupName: string,
 ): (Book | BooksGroup)[] => {
-  const groups: BooksGroup[] = books.reduce((acc: BooksGroup[], book: Book) => {
-    if (book.deletedAt) return acc;
-    if (parentGroupName && (!book.groupName || !book.groupName.startsWith(parentGroupName)))
-      return acc;
-    book.groupId = book.groupId || BOOK_UNGROUPED_ID;
-    book.groupName = book.groupName || BOOK_UNGROUPED_NAME;
-    const slashIndex = book.groupName.indexOf('/', parentGroupName.length + 1);
-    const leafGroupName = book.groupName.substring(
-      parentGroupName ? parentGroupName.length + 1 : 0,
-      slashIndex > 0 ? slashIndex : undefined,
-    );
-    const fullGroupName = parentGroupName
-      ? `${parentGroupName}${leafGroupName ? `/${leafGroupName}` : ''}`
-      : leafGroupName;
-    const groupIndex = acc.findIndex(
-      (group) =>
-        group.name === fullGroupName ||
-        (parentGroupName && group.name === parentGroupName) ||
-        (leafGroupName === BOOK_UNGROUPED_NAME && group.name === BOOK_UNGROUPED_NAME),
-    );
-    const booksGroup = acc[groupIndex];
-    if (booksGroup) {
-      booksGroup.books.push(book);
-      booksGroup.updatedAt = Math.max(booksGroup.updatedAt, book.updatedAt);
+  const groupsMap = new Map<string, BooksGroup>();
+
+  for (const book of books) {
+    if (book.deletedAt) continue;
+
+    const groupName = book.groupName || BOOK_UNGROUPED_NAME;
+    if (
+      parentGroupName &&
+      groupName !== parentGroupName &&
+      !groupName.startsWith(parentGroupName + '/')
+    ) {
+      continue;
+    }
+
+    const relativePath = parentGroupName ? groupName.slice(parentGroupName.length + 1) : groupName;
+    // Get the immediate child group name (or empty if book is directly in parent)
+    const slashIndex = relativePath.indexOf('/');
+    const immediateChild = slashIndex > 0 ? relativePath.slice(0, slashIndex) : relativePath;
+    // Determine if this book belongs directly to the parent group
+    const isDirectChild =
+      groupName === parentGroupName || (groupName === BOOK_UNGROUPED_NAME && !parentGroupName);
+    // Build the full group name for this level
+    const fullGroupName = isDirectChild
+      ? BOOK_UNGROUPED_NAME
+      : parentGroupName
+        ? `${parentGroupName}/${immediateChild}`
+        : immediateChild;
+
+    const mapKey = fullGroupName;
+    const existingGroup = groupsMap.get(mapKey);
+    if (existingGroup) {
+      existingGroup.books.push(book);
+      existingGroup.updatedAt = Math.max(existingGroup.updatedAt, book.updatedAt);
     } else {
-      const groupName = fullGroupName;
-      acc.push({
-        id: groupName === parentGroupName ? BOOK_UNGROUPED_ID : md5Fingerprint(groupName),
-        name: groupName === parentGroupName ? BOOK_UNGROUPED_NAME : groupName,
-        displayName: leafGroupName,
+      groupsMap.set(mapKey, {
+        id: isDirectChild ? BOOK_UNGROUPED_ID : md5Fingerprint(fullGroupName),
+        name: fullGroupName,
+        displayName: isDirectChild ? BOOK_UNGROUPED_NAME : immediateChild,
         books: [book],
         updatedAt: book.updatedAt,
       });
     }
-    return acc;
-  }, []);
-  groups.forEach((group) => {
+  }
+
+  for (const group of groupsMap.values()) {
     group.books.sort((a, b) => b.updatedAt - a.updatedAt);
-  });
-  const ungroupedBooks: Book[] =
-    groups.find((group) => group.name === BOOK_UNGROUPED_NAME || group.name === parentGroupName)
-      ?.books || [];
-  const groupedBooks: BooksGroup[] = groups.filter(
-    (group) => group.name !== BOOK_UNGROUPED_NAME && group.name !== parentGroupName,
+  }
+
+  const ungroupedGroup = groupsMap.get(BOOK_UNGROUPED_NAME);
+  const ungroupedBooks = ungroupedGroup?.books || [];
+  const groupedBooks = Array.from(groupsMap.values()).filter(
+    (group) => group.name !== BOOK_UNGROUPED_NAME,
   );
+
   return [...ungroupedBooks, ...groupedBooks].sort((a, b) => b.updatedAt - a.updatedAt);
 };
 
@@ -82,11 +91,16 @@ interface BookshelfItemProps {
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   toggleSelection: (hash: string) => void;
   handleGroupBooks: () => void;
-  handleBookDownload: (book: Book) => Promise<boolean>;
+  handleBookDownload: (
+    book: Book,
+    options?: { redownload?: boolean; queued?: boolean },
+  ) => Promise<boolean>;
   handleBookUpload: (book: Book, syncBooks?: boolean) => Promise<boolean>;
   handleBookDelete: (book: Book, syncBooks?: boolean) => Promise<boolean>;
   handleSetSelectMode: (selectMode: boolean) => void;
   handleShowDetailsBook: (book: Book) => void;
+  handleLibraryNavigation: (targetGroup: string) => void;
+  handleUpdateReadingStatus: (book: Book, status: ReadingStatus | undefined) => void;
 }
 
 const BookshelfItem: React.FC<BookshelfItemProps> = ({
@@ -103,18 +117,17 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   handleBookDownload,
   handleSetSelectMode,
   handleShowDetailsBook,
+  handleLibraryNavigation,
+  handleUpdateReadingStatus,
 }) => {
   const _ = useTranslation();
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const router = useAppRouter();
   const { envConfig, appService } = useEnv();
   const { settings } = useSettingsStore();
   const { updateBook } = useLibraryStore();
 
   const showBookDetailsModal = useCallback(async (book: Book) => {
-    if (await makeBookAvailable(book)) {
-      handleShowDetailsBook(book);
-    }
+    handleShowDetailsBook(book);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -131,13 +144,13 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
       let available = false;
       const loadingTimeout = setTimeout(() => setLoading(true), 200);
       try {
-        available = await handleBookDownload(book);
+        available = await handleBookDownload(book, { queued: false });
         await updateBook(envConfig, book);
       } finally {
         if (loadingTimeout) clearTimeout(loadingTimeout);
         setLoading(false);
-        return available;
       }
+      return available;
     }
     return true;
   };
@@ -167,15 +180,11 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
       if (isSelectMode) {
         toggleSelection(group.id);
       } else {
-        const params = new URLSearchParams(searchParams?.toString());
-        params.set('group', group.id);
-        setTimeout(() => {
-          navigateToLibrary(router, `${params.toString()}`);
-        }, 0);
+        handleLibraryNavigation(group.id);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isSelectMode, searchParams],
+    [isSelectMode, handleLibraryNavigation],
   );
 
   const bookContextMenuHandler = async (book: Book) => {
@@ -200,6 +209,24 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
         handleGroupBooks();
       },
     });
+    const markAsFinishedMenuItem = await MenuItem.new({
+      text: _('Mark as Finished'),
+      action: async () => {
+        handleUpdateReadingStatus(book, 'finished');
+      },
+    });
+    const markAsUnreadMenuItem = await MenuItem.new({
+      text: _('Mark as Unread'),
+      action: async () => {
+        handleUpdateReadingStatus(book, 'unread');
+      },
+    });
+    const clearStatusMenuItem = await MenuItem.new({
+      text: _('Clear Status'),
+      action: async () => {
+        handleUpdateReadingStatus(book, undefined);
+      },
+    });
     const showBookInFinderMenuItem = await MenuItem.new({
       text: _(fileRevealLabel),
       action: async () => {
@@ -216,7 +243,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
     const downloadBookMenuItem = await MenuItem.new({
       text: _('Download Book'),
       action: async () => {
-        handleBookDownload(book);
+        handleBookDownload(book, { queued: true });
       },
     });
     const uploadBookMenuItem = await MenuItem.new({
@@ -234,6 +261,15 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
     const menu = await Menu.new();
     menu.append(selectBookMenuItem);
     menu.append(groupBooksMenuItem);
+    if (book.readingStatus === 'finished') {
+      menu.append(markAsUnreadMenuItem);
+    } else {
+      menu.append(markAsFinishedMenuItem);
+    }
+    // show "Clear Status" option when book has an explicit status set
+    if (book.readingStatus === 'finished' || book.readingStatus === 'unread') {
+      menu.append(clearStatusMenuItem);
+    }
     menu.append(showBookDetailsMenuItem);
     menu.append(showBookInFinderMenuItem);
     if (book.uploadedAt && !book.downloadedAt) {
@@ -360,7 +396,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
             'sm:hover:bg-base-300/50 flex h-full flex-col px-0 py-2 sm:px-4 sm:py-4',
           mode === 'list' && 'border-base-300 flex flex-col border-b py-2',
           appService?.isMobileApp && 'no-context-menu',
-          pressing && mode === 'grid' ? 'scale-95' : 'scale-100',
+          pressing && mode === 'grid' ? 'not-eink:scale-95' : 'scale-100',
         )}
         role='button'
         tabIndex={0}

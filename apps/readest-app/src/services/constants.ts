@@ -1,20 +1,32 @@
 import {
+  AnnotatorConfig,
   BookFont,
   BookLanguage,
   BookLayout,
   BookSearchConfig,
   BookStyle,
   HighlightColor,
+  NoteExportConfig,
+  ParagraphModeConfig,
+  ReadingRulerColor,
   ScreenConfig,
   TranslatorConfig,
   TTSConfig,
   ViewConfig,
   ViewSettings,
 } from '@/types/book';
-import { KOSyncSettings, ReadSettings, SystemSettings } from '@/types/settings';
+import {
+  KOSyncSettings,
+  LibraryGroupByType,
+  LibrarySortByType,
+  ReadSettings,
+  ReadwiseSettings,
+  SystemSettings,
+} from '@/types/settings';
 import { UserStorageQuota, UserDailyTranslationQuota } from '@/types/quota';
 import { getDefaultMaxBlockSize, getDefaultMaxInlineSize } from '@/utils/config';
 import { stubTranslation as _ } from '@/utils/misc';
+import { DEFAULT_AI_SETTINGS } from './ai/constants';
 
 export const DATA_SUBDIR = 'Readest';
 export const LOCAL_BOOKS_SUBDIR = `${DATA_SUBDIR}/Books`;
@@ -53,6 +65,14 @@ export const DEFAULT_KOSYNC_SETTINGS = {
   enabled: false,
 } as KOSyncSettings;
 
+export const READWISE_API_BASE_URL = 'https://readwise.io/api/v2';
+
+export const DEFAULT_READWISE_SETTINGS = {
+  enabled: false,
+  accessToken: '',
+  lastSyncedAt: 0,
+} as ReadwiseSettings;
+
 export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
   keepLogin: false,
   autoUpload: true,
@@ -68,14 +88,22 @@ export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
   lastOpenBooks: [],
   autoImportBooksOnOpen: false,
   telemetryEnabled: true,
+  discordRichPresenceEnabled: false,
   libraryViewMode: 'grid',
-  librarySortBy: 'updated',
+  librarySortBy: LibrarySortByType.Updated,
   librarySortAscending: false,
+  libraryGroupBy: LibraryGroupByType.Group,
   libraryCoverFit: 'crop',
   libraryAutoColumns: true,
   libraryColumns: 6,
 
+  metadataSeriesCollapsed: false,
+  metadataOthersCollapsed: false,
+  metadataDescriptionCollapsed: false,
+
   kosync: DEFAULT_KOSYNC_SETTINGS,
+  readwise: DEFAULT_READWISE_SETTINGS,
+  aiSettings: DEFAULT_AI_SETTINGS,
 
   lastSyncedAtBooks: 0,
   lastSyncedAtConfigs: 0,
@@ -94,11 +122,20 @@ export const HIGHLIGHT_COLOR_HEX: Record<HighlightColor, string> = {
   violet: '#a78bfa', // violet-400
 };
 
+export const READING_RULER_COLORS: Record<ReadingRulerColor, string> = {
+  transparent: '#00000000',
+  yellow: '#facc15',
+  green: '#4ade80',
+  blue: '#60a5fa',
+  rose: '#fb7185',
+};
+
 export const DEFAULT_READSETTINGS: ReadSettings = {
   sideBarWidth: '15%',
   isSideBarPinned: true,
   notebookWidth: '25%',
   isNotebookPinned: false,
+  notebookActiveTab: 'notes',
   autohideCursor: true,
   translationProvider: 'deepl',
   translateTargetLang: 'EN',
@@ -111,6 +148,7 @@ export const DEFAULT_READSETTINGS: ReadSettings = {
     squiggly: 'blue',
   },
   customHighlightColors: HIGHLIGHT_COLOR_HEX,
+  userHighlightColors: [],
   customTtsHighlightColors: [],
 };
 
@@ -141,22 +179,21 @@ export const DEFAULT_BOOK_LAYOUT: BookLayout = {
   compactMarginRightPx: 16,
   gapPercent: 5,
   scrolled: false,
+  noContinuousScroll: false,
   disableClick: false,
   fullscreenClickArea: false,
   swapClickArea: false,
   disableDoubleClick: false,
   volumeKeysToFlip: false,
-  continuousScroll: false,
   maxColumnCount: 2,
   maxInlineSize: getDefaultMaxInlineSize(),
   maxBlockSize: getDefaultMaxBlockSize(),
-  animated: false,
-  isEink: false,
   writingMode: 'auto',
   vertical: false,
   rtl: false,
   scrollingOverlap: 0,
   allowScript: false,
+  hideScrollbar: false,
 };
 
 export const DEFAULT_BOOK_LANGUAGE: BookLanguage = {
@@ -181,6 +218,7 @@ export const DEFAULT_BOOK_STYLE: BookStyle = {
   backgroundTextureId: 'none',
   backgroundOpacity: 0.6,
   backgroundSize: 'cover',
+  highlightOpacity: 0.4,
   codeHighlighting: false,
   codeLanguage: 'auto-detect',
   userStylesheet: '',
@@ -197,6 +235,7 @@ export const DEFAULT_MOBILE_VIEW_SETTINGS: Partial<ViewSettings> = {
   defaultFont: 'Sans-serif',
   marginBottomPx: 16,
   disableDoubleClick: true,
+  spreadMode: 'none',
 };
 
 export const DEFAULT_CJK_VIEW_SETTINGS: Partial<ViewSettings> = {
@@ -208,6 +247,12 @@ export const DEFAULT_CJK_VIEW_SETTINGS: Partial<ViewSettings> = {
 
 export const DEFAULT_FIXED_LAYOUT_VIEW_SETTINGS: Partial<ViewSettings> = {
   overrideColor: false,
+};
+
+export const DEFAULT_EINK_VIEW_SETTINGS: Partial<ViewSettings> = {
+  isEink: true,
+  animated: false,
+  volumeKeysToFlip: true,
 };
 
 export const DEFAULT_VIEW_CONFIG: ViewConfig = {
@@ -224,9 +269,25 @@ export const DEFAULT_VIEW_CONFIG: ViewConfig = {
   showRemainingTime: false,
   showRemainingPages: false,
   showProgressInfo: true,
+  showCurrentTime: false,
+  showCurrentBatteryStatus: false,
+  showBatteryPercentage: true,
+  use24HourClock: false,
+  tapToToggleFooter: false,
   showMarginsOnScroll: false,
+  showPaginationButtons: false,
   progressStyle: 'fraction',
   progressInfoMode: 'all',
+
+  animated: false,
+  isEink: false,
+  isColorEink: false,
+
+  readingRulerEnabled: false,
+  readingRulerLines: 2,
+  readingRulerPosition: 33,
+  readingRulerOpacity: 0.5,
+  readingRulerColor: 'transparent',
 };
 
 export const DEFAULT_TTS_CONFIG: TTSConfig = {
@@ -235,6 +296,7 @@ export const DEFAULT_TTS_CONFIG: TTSConfig = {
   ttsLocation: '',
   showTTSBar: false,
   ttsHighlightOptions: { style: 'highlight', color: '#808080' },
+  ttsMediaMetadata: 'sentence',
 };
 
 export const DEFAULT_TRANSLATOR_CONFIG: TranslatorConfig = {
@@ -245,8 +307,35 @@ export const DEFAULT_TRANSLATOR_CONFIG: TranslatorConfig = {
   ttsReadAloudText: 'both',
 };
 
+export const DEFAULT_NOTE_EXPORT_CONFIG: NoteExportConfig = {
+  includeTitle: true,
+  includeAuthor: true,
+  includeDate: true,
+  includeChapterTitles: true,
+  includeQuotes: true,
+  includeNotes: true,
+  includePageNumber: true,
+  includeTimestamp: false,
+  includeChapterSeparator: false,
+  noteSeparator: '\n\n',
+  useCustomTemplate: false,
+  customTemplate: '',
+  exportAsPlainText: false,
+};
+
+export const DEFAULT_ANNOTATOR_CONFIG: AnnotatorConfig = {
+  enableAnnotationQuickActions: true,
+  annotationQuickAction: null,
+  copyToNotebook: false,
+  noteExportConfig: DEFAULT_NOTE_EXPORT_CONFIG,
+};
+
 export const DEFAULT_SCREEN_CONFIG: ScreenConfig = {
   screenOrientation: 'auto',
+};
+
+export const DEFAULT_PARAGRAPH_MODE_CONFIG: ParagraphModeConfig = {
+  enabled: false,
 };
 
 export const DEFAULT_BOOK_SEARCH_CONFIG: BookSearchConfig = {
@@ -275,8 +364,8 @@ export const CJK_SERIF_FONTS = [
   _('LXGW WenKai GB Screen'),
   _('LXGW WenKai TC'),
   _('GuanKiapTsingKhai-T'),
-  _('Source Han Serif CN VF'),
-  _('Huiwen-mincho'),
+  _('Source Han Serif CN'),
+  _('Huiwen-MinchoGBK'),
   _('KingHwa_OldSong'),
 ];
 
@@ -616,6 +705,8 @@ export const READEST_UPDATER_FILE = `${LATEST_DOWNLOAD_BASE_URL}/latest.json`;
 
 export const READEST_CHANGELOG_FILE = `${LATEST_DOWNLOAD_BASE_URL}/release-notes.json`;
 
+export const READEST_PUBLIC_STORAGE_BASE_URL = 'https://storage.readest.com';
+
 export const READEST_OPDS_USER_AGENT = 'Readest/1.0 (OPDS Browser)';
 
 export const SYNC_PROGRESS_INTERVAL_SEC = 3;
@@ -626,6 +717,8 @@ export const CHECK_UPDATE_INTERVAL_SEC = 24 * 60 * 60;
 export const MAX_ZOOM_LEVEL = 500;
 export const MIN_ZOOM_LEVEL = 50;
 export const ZOOM_STEP = 10;
+
+export const SHOW_UNREAD_STATUS_BADGE = false;
 
 export const DEFAULT_STORAGE_QUOTA: UserStorageQuota = {
   free: 500 * 1024 * 1024,
@@ -644,6 +737,9 @@ export const DEFAULT_DAILY_TRANSLATION_QUOTA: UserDailyTranslationQuota = {
 export const DOUBLE_CLICK_INTERVAL_THRESHOLD_MS = 250;
 export const DISABLE_DOUBLE_CLICK_ON_MOBILE = true;
 export const LONG_HOLD_THRESHOLD = 500;
+
+export const SIZE_PER_LOC = 1500;
+export const SIZE_PER_TIME_UNIT = 1600;
 
 export const CUSTOM_THEME_TEMPLATES = [
   {
@@ -710,11 +806,13 @@ export const TRANSLATED_LANGS = {
   es: 'Español',
   pt: 'Português',
   ru: 'Русский',
+  he: 'עברית',
   ar: 'العربية',
   fa: 'فارسی',
   el: 'Ελληνικά',
   uk: 'Українська',
   pl: 'Polski',
+  sl: 'Slovenščina',
   tr: 'Türkçe',
   hi: 'हिन्दी',
   id: 'Indonesia',
@@ -727,6 +825,7 @@ export const TRANSLATED_LANGS = {
   si: 'සිංහල',
   'zh-CN': '简体中文',
   'zh-TW': '正體中文',
+  ro: 'Română',
 };
 
 export const TRANSLATOR_LANGS: Record<string, string> = {
@@ -737,6 +836,7 @@ export const TRANSLATOR_LANGS: Record<string, string> = {
   da: 'Dansk',
   cs: 'Čeština',
   hu: 'Magyar',
+  km: 'ខ្មែរ',
   ro: 'Română',
   bg: 'Български',
   hr: 'Hrvatski',

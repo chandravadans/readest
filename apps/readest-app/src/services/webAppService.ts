@@ -1,4 +1,6 @@
 import { FileSystem, BaseDir, AppPlatform, ResolvedPath, FileItem } from '@/types/system';
+import { DatabaseOpts, DatabaseService } from '@/types/database';
+import { SchemaType } from '@/services/database/migrate';
 import { getOSPlatform, isValidURL } from '@/utils/misc';
 import { RemoteFile } from '@/utils/file';
 import { isPWA } from './environment';
@@ -168,14 +170,34 @@ const indexedDBFileSystem: FileSystem = {
       transaction.onerror = () => reject(transaction.error);
     });
   },
-  async createDir() {
-    // Directories are virtual in IndexedDB; no-op
+  async createDir(path: string, base: BaseDir) {
+    return await this.writeFile(path, base, '');
   },
-  async removeDir() {
-    // Directories are virtual in IndexedDB; no-op
+  async removeDir(path: string, base: BaseDir) {
+    const { fp } = this.resolvePath(path, base);
+    const db = await openIndexedDB();
+
+    return new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction('files', 'readwrite');
+      const store = transaction.objectStore('files');
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const files = request.result as { path: string }[];
+        files.forEach((file) => {
+          if (file.path.startsWith(fp)) {
+            store.delete(file.path);
+          }
+        });
+      };
+
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
   },
   async readDir(path: string, base: BaseDir) {
     const { fp } = this.resolvePath(path, base);
+    const prefix = fp.endsWith('/') ? fp : `${fp}/`;
     const db = await openIndexedDB();
 
     return new Promise<FileItem[]>((resolve, reject) => {
@@ -187,9 +209,9 @@ const indexedDBFileSystem: FileSystem = {
         const files = request.result as { path: string; content: string | ArrayBuffer | Blob }[];
         resolve(
           files
-            .filter((file) => file.path.startsWith(fp))
+            .filter((file) => file.path.startsWith(prefix))
             .map((file) => ({
-              path: file.path.slice(fp.length + 1),
+              path: file.path.slice(prefix.length),
               size:
                 file.content instanceof Blob
                   ? file.content.size
@@ -301,5 +323,46 @@ export class WebAppService extends BaseAppService {
 
   async selectFiles(): Promise<string[]> {
     throw new Error('selectFiles is not supported in browser');
+  }
+
+  async saveFile(
+    filename: string,
+    content: string | ArrayBuffer,
+    options?: { filePath?: string; mimeType?: string },
+  ): Promise<boolean> {
+    try {
+      const blob = new Blob([content], { type: options?.mimeType || 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      return true;
+    } catch (error) {
+      console.error('Failed to save file:', error);
+      return false;
+    }
+  }
+
+  async ask(message: string): Promise<boolean> {
+    return window.confirm(message);
+  }
+
+  async openDatabase(
+    schema: SchemaType,
+    path: string,
+    base: BaseDir,
+    opts?: DatabaseOpts,
+  ): Promise<DatabaseService> {
+    const fullPath = await this.resolveFilePath(path, base);
+    const { WebDatabaseService } = await import('./database/webDatabaseService');
+    const db = await WebDatabaseService.open(fullPath, opts);
+    const { migrate } = await import('./database/migrate');
+    const { getMigrations } = await import('./database/migrations');
+    await migrate(db, getMigrations(schema));
+    return db;
   }
 }

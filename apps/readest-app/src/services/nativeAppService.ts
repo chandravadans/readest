@@ -14,7 +14,7 @@ import {
   DirEntry,
 } from '@tauri-apps/plugin-fs';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
-import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { open as openDialog, save as saveDialog, ask } from '@tauri-apps/plugin-dialog';
 import {
   join,
   basename,
@@ -25,6 +25,7 @@ import {
   tempDir,
 } from '@tauri-apps/api/path';
 import { type as osType } from '@tauri-apps/plugin-os';
+import { shareFile } from '@choochmeque/tauri-plugin-sharekit-api';
 
 import {
   FileSystem,
@@ -37,10 +38,12 @@ import {
 import { getOSPlatform, isContentURI, isFileURI, isValidURL } from '@/utils/misc';
 import { getDirPath, getFilename } from '@/utils/path';
 import { NativeFile, RemoteFile } from '@/utils/file';
-import { copyURIToPath } from '@/utils/bridge';
+import { copyURIToPath, getStorefrontRegionCode } from '@/utils/bridge';
 import { copyFiles } from '@/utils/files';
 
 import { BaseAppService } from './appService';
+import { DatabaseOpts, DatabaseService } from '@/types/database';
+import { SchemaType } from '@/services/database/migrate';
 import {
   DATA_SUBDIR,
   LOCAL_BOOKS_SUBDIR,
@@ -51,11 +54,21 @@ import {
 
 declare global {
   interface Window {
+    __READEST_IS_EINK?: boolean;
+    __READEST_IS_APPIMAGE?: boolean;
     __READEST_UPDATER_DISABLED?: boolean;
   }
 }
 
 const OS_TYPE = osType();
+
+const safeDecodePath = (input: string) => {
+  try {
+    return decodeURI(input);
+  } catch {
+    return input;
+  }
+};
 
 // Helper function to create a path resolver based on custom root directory and portable mode
 // 0. If no custom root dir and not portable mode, use default Tauri BaseDirectory
@@ -190,12 +203,13 @@ export const nativeFileSystem: FileSystem = {
     return this.getURL(path);
   },
   async openFile(path: string, base: BaseDir, name?: string) {
-    const { fp, baseDir } = this.resolvePath(path, base);
-    let fname = name || getFilename(fp);
+    const normalizedPath = OS_TYPE === 'ios' ? safeDecodePath(path) : path;
+    const { fp, baseDir } = this.resolvePath(normalizedPath, base);
+    let fname = safeDecodePath(name || getFilename(fp));
     if (isValidURL(path)) {
       return await new RemoteFile(path, fname).open();
     } else if (isContentURI(path) || (isFileURI(path) && OS_TYPE === 'ios')) {
-      fname = await basename(path);
+      fname = safeDecodePath(await basename(path));
       if (path.includes('com.android.externalstorage')) {
         // If the URI is from shared internal storage (like /storage/emulated/0),
         // we can access it directly using the path — no need to copy.
@@ -205,7 +219,7 @@ export const nativeFileSystem: FileSystem = {
         // or file:// URIs is security scoped resource in iOS (e.g. from Files app),
         // we cannot access the file directly — so we copy it to a temporary cache location.
         const prefix = await this.getPrefix('Cache');
-        const dst = await join(prefix, fname);
+        const dst = await join(prefix, decodeURIComponent(fname));
         const res = await copyURIToPath({ uri: path, dst });
         if (!res.success) {
           console.error('Failed to open file:', res);
@@ -216,17 +230,22 @@ export const nativeFileSystem: FileSystem = {
     } else if (isFileURI(path)) {
       return await new NativeFile(fp, fname, baseDir ? baseDir : null).open();
     } else {
-      if (OS_TYPE === 'android') {
+      if (OS_TYPE === 'android' || OS_TYPE === 'ios') {
         // NOTE: RemoteFile is not usable on Android due to a known issue of range request in Android WebView.
         // see https://issues.chromium.org/issues/40739128
+        // On iOS, importing picker Inbox files should also use NativeFile to avoid fetch/HEAD issues.
         return await new NativeFile(fp, fname, baseDir ? baseDir : null).open();
       } else {
         // NOTE: RemoteFile currently performs about 2× faster than NativeFile
         // due to an unresolved performance issue in Tauri (see tauri-apps/tauri#9190).
         // Once the bug is resolved, we should switch back to using NativeFile.
-        const prefix = await this.getPrefix(base);
-        const absolutePath = prefix ? await join(prefix, path) : path;
-        return await new RemoteFile(this.getURL(absolutePath), fname).open();
+        try {
+          const prefix = await this.getPrefix(base);
+          const absolutePath = prefix ? await join(prefix, path) : path;
+          return await new RemoteFile(this.getURL(absolutePath), fname).open();
+        } catch {
+          return await new NativeFile(fp, fname, baseDir ? baseDir : null).open();
+        }
       }
     }
   },
@@ -302,6 +321,36 @@ export const nativeFileSystem: FileSystem = {
   async readDir(path: string, base: BaseDir) {
     const { fp, baseDir } = this.resolvePath(path, base);
 
+    const getRelativePath = (filePath: string, basePath: string): string => {
+      let relativePath = filePath;
+      if (filePath.toLowerCase().startsWith(basePath.toLowerCase())) {
+        relativePath = filePath.substring(basePath.length);
+      }
+      if (relativePath.startsWith('\\') || relativePath.startsWith('/')) {
+        relativePath = relativePath.substring(1);
+      }
+      return relativePath;
+    };
+
+    // Use Rust WalkDir for massive performance gain on absolute paths
+    if (!baseDir || baseDir === 0) {
+      try {
+        const files = await invoke<{ path: string; size: number }[]>('read_dir', {
+          path: fp,
+          recursive: true,
+          extensions: ['*'],
+        });
+
+        return files.map((file) => ({
+          path: getRelativePath(file.path, fp),
+          size: file.size,
+        }));
+      } catch (e) {
+        console.error('Rust read_dir failed, falling back to JS recursion', e);
+      }
+    }
+
+    // Fallback to readDir for non-absolute paths or on error
     const entries = await readDir(fp, baseDir ? { baseDir } : undefined);
     const fileList: FileItem[] = [];
     const readDirRecursively = async (
@@ -314,12 +363,12 @@ export const nativeFileSystem: FileSystem = {
         if (entry.isDirectory) {
           const dir = await join(parent, entry.name);
           const relativeDir = relative ? await join(relative, entry.name) : entry.name;
-          await readDirRecursively(
-            dir,
-            relativeDir,
-            await readDir(dir, baseDir ? { baseDir } : undefined),
-            fileList,
-          );
+          try {
+            const entries = await readDir(dir, baseDir ? { baseDir } : undefined);
+            await readDirRecursively(dir, relativeDir, entries, fileList);
+          } catch {
+            console.warn(`Skipping unreadable dir: ${dir}`);
+          }
         } else {
           const filePath = await join(parent, entry.name);
           const relativePath = relative ? await join(relative, entry.name) : entry.name;
@@ -367,6 +416,8 @@ export class NativeAppService extends BaseAppService {
   override isLinuxApp = OS_TYPE === 'linux';
   override isMobileApp = ['android', 'ios'].includes(OS_TYPE);
   override isDesktopApp = ['macos', 'windows', 'linux'].includes(OS_TYPE);
+  override isAppImage = Boolean(window.__READEST_IS_APPIMAGE);
+  override isEink = Boolean(window.__READEST_IS_EINK);
   override hasTrafficLight = OS_TYPE === 'macos';
   override hasWindow = !(OS_TYPE === 'ios' || OS_TYPE === 'android');
   override hasWindowBar = !(OS_TYPE === 'ios' || OS_TYPE === 'android');
@@ -388,8 +439,18 @@ export class NativeAppService extends BaseAppService {
   override canCustomizeRootDir = DIST_CHANNEL !== 'appstore';
   override canReadExternalDir = DIST_CHANNEL !== 'appstore' && DIST_CHANNEL !== 'playstore';
   override distChannel = DIST_CHANNEL;
+  override storefrontRegionCode: string | null = null;
+  override isOnlineCatalogsAccessible = true;
 
   private execDir?: string = undefined;
+  private customRootDir?: string = undefined;
+
+  constructor(customRootDir?: string) {
+    super();
+    if (customRootDir) {
+      this.customRootDir = customRootDir;
+    }
+  }
 
   override async init() {
     const execDir = await invoke<string>('get_executable_dir');
@@ -406,12 +467,19 @@ export class NativeAppService extends BaseAppService {
       });
     }
     const settings = await this.loadSettings();
-    if (settings.customRootDir) {
+    if (this.customRootDir || settings.customRootDir) {
       this.fs.resolvePath = getPathResolver({
-        customRootDir: settings.customRootDir,
+        customRootDir: this.customRootDir || settings.customRootDir,
         isPortable: this.isPortableApp,
         execDir,
       });
+    }
+    if (this.isIOSApp) {
+      this.isOnlineCatalogsAccessible = this.distChannel !== 'appstore';
+      const res = await getStorefrontRegionCode();
+      if (res.regionCode) {
+        this.storefrontRegionCode = res.regionCode;
+      }
     }
     await this.prepareBooksDir();
     await this.runMigrations();
@@ -460,6 +528,7 @@ export class NativeAppService extends BaseAppService {
     const selected = await openDialog({
       directory: true,
       multiple: false,
+      recursive: true,
     });
     return selected as string;
   }
@@ -469,7 +538,58 @@ export class NativeAppService extends BaseAppService {
       multiple: true,
       filters: [{ name, extensions }],
     });
-    return Array.isArray(selected) ? selected : selected ? [selected] : [];
+    const files = Array.isArray(selected) ? selected : selected ? [selected] : [];
+    return OS_TYPE === 'ios' ? files.map((f) => safeDecodePath(f)) : files;
+  }
+
+  async saveFile(
+    filename: string,
+    content: string | ArrayBuffer,
+    options?: { filePath?: string; mimeType?: string },
+  ): Promise<boolean> {
+    try {
+      const ext = filename.split('.').pop() || '';
+      if (this.isIOSApp && options?.filePath) {
+        await shareFile(options.filePath, {
+          mimeType: options?.mimeType || 'application/octet-stream',
+        });
+      } else {
+        const filePath = await saveDialog({
+          defaultPath: filename,
+          filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
+        });
+        if (!filePath) return false;
+
+        if (typeof content === 'string') {
+          await writeTextFile(filePath, content);
+        } else {
+          await writeFile(filePath, new Uint8Array(content));
+        }
+      }
+      return true;
+    } catch (error) {
+      console.error('Failed to save file:', error);
+      return false;
+    }
+  }
+
+  async ask(message: string): Promise<boolean> {
+    return await ask(message);
+  }
+
+  async openDatabase(
+    schema: SchemaType,
+    path: string,
+    base: BaseDir,
+    opts?: DatabaseOpts,
+  ): Promise<DatabaseService> {
+    const fullPath = await this.resolveFilePath(path, base);
+    const { NativeDatabaseService } = await import('./database/nativeDatabaseService');
+    const db = await NativeDatabaseService.open(`sqlite:${fullPath}`, opts);
+    const { migrate } = await import('./database/migrate');
+    const { getMigrations } = await import('./database/migrations');
+    await migrate(db, getMigrations(schema));
+    return db;
   }
 
   async migrate20251029() {

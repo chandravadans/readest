@@ -9,7 +9,7 @@ export const getContentMd5 = (content: unknown) => md5(JSON.stringify(content));
 
 export const makeSafeFilename = (filename: string, replacement = '_') => {
   // Windows restricted characters + control characters and reserved names
-  const unsafeCharacters = /[<>:%"\/\\|?*\x00-\x1F]/g;
+  const unsafeCharacters = /[<>:%#"\/\\|?*\x00-\x1F]/g;
   const reservedFilenames = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
   // Unsafe to use filename including file extensions over 255 bytes on Android
   const maxFilenameBytes = 250;
@@ -32,7 +32,11 @@ export const makeSafeFilename = (filename: string, replacement = '_') => {
 };
 
 export const getLocale = () => {
-  return localStorage?.getItem('i18nextLng') || navigator?.language || '';
+  const locale = localStorage?.getItem('i18nextLng') || navigator?.language || '';
+  // POSIX locale values (e.g. 'C', 'C.UTF-8', 'POSIX') are not valid BCP 47
+  // tags and would cause Intl/toLocaleString to throw — fall back to en-US
+  if (!locale || /^(C|POSIX)(\..*)?$/i.test(locale)) return 'en-US';
+  return locale;
 };
 
 export const getUserLang = () => {

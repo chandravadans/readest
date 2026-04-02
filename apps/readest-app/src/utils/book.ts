@@ -1,7 +1,7 @@
 import { BookMetadata, EXTS } from '@/libs/document';
 import { Book, BookConfig, BookProgress, WritingMode } from '@/types/book';
 import { SUPPORTED_LANGS } from '@/services/constants';
-import { getUserLang, makeSafeFilename } from './misc';
+import { getLocale, getUserLang, makeSafeFilename } from './misc';
 import { getStorageType } from './storage';
 import { getDirFromLanguage } from './rtl';
 import { code6392to6391, isValidLang, normalizedLangCode } from './lang';
@@ -54,6 +54,11 @@ export interface Identifier {
 
 export interface Contributor {
   name: LanguageMap;
+}
+
+export interface Collection {
+  name: string;
+  position?: string;
 }
 
 const formatLanguageMap = (x: string | LanguageMap, defaultLang = false): string => {
@@ -133,6 +138,15 @@ export const formatTitle = (title: string | LanguageMap) => {
   return typeof title === 'string' ? title : formatLanguageMap(title);
 };
 
+export const formatDescription = (description?: string | LanguageMap) => {
+  if (!description) return '';
+  const text = typeof description === 'string' ? description : formatLanguageMap(description);
+  return text
+    .replace(/<\/?[^>]+(>|$)/g, '')
+    .replace(/&#\d+;/g, '')
+    .trim();
+};
+
 export const formatPublisher = (publisher: string | LanguageMap) => {
   return typeof publisher === 'string' ? publisher : formatLanguageMap(publisher);
 };
@@ -170,6 +184,11 @@ export const formatDate = (date: string | number | Date | null | undefined, isUT
   } catch {
     return;
   }
+};
+
+export const formatLocaleDateTime = (date: number | Date) => {
+  const userLang = getLocale();
+  return new Date(date).toLocaleString(userLang);
 };
 
 export const formatBytes = (bytes?: number | null, locale = 'en-US') => {

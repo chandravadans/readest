@@ -9,6 +9,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
+import { useGamepad } from '@/hooks/useGamepad';
 import { useTranslation } from '@/hooks/useTranslation';
 import { SystemSettings } from '@/types/settings';
 import { parseOpenWithFiles } from '@/helpers/openWith';
@@ -20,6 +21,7 @@ import { uniqueId } from '@/utils/misc';
 import { throttle } from '@/utils/throttle';
 import { eventDispatcher } from '@/utils/event';
 import { navigateToLibrary } from '@/utils/nav';
+import { clearDiscordPresence } from '@/utils/discord';
 import { BOOK_IDS_SEPARATOR } from '@/services/constants';
 import { BookDetailModal } from '@/components/metadata';
 
@@ -29,6 +31,7 @@ import Spinner from '@/components/Spinner';
 import SideBar from './sidebar/SideBar';
 import Notebook from './notebook/Notebook';
 import BooksGrid from './BooksGrid';
+import SettingsDialog from '@/components/settings/SettingsDialog';
 
 const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ ids, settings }) => {
   const _ = useTranslation();
@@ -41,12 +44,14 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
   const { getConfig, getBookData, saveConfig } = useBookDataStore();
   const { getView, setBookKeys, getViewSettings } = useReaderStore();
   const { initViewState, getViewState, clearViewState } = useReaderStore();
+  const { isSettingsDialogOpen, settingsDialogBookKey } = useSettingsStore();
   const [showDetailsBook, setShowDetailsBook] = useState<Book | null>(null);
   const isInitiating = useRef(false);
   const [loading, setLoading] = useState(false);
   const [errorLoading, setErrorLoading] = useState(false);
 
   useBookShortcuts({ sideBarBookKey, bookKeys });
+  useGamepad();
 
   useEffect(() => {
     if (isInitiating.current) return;
@@ -95,8 +100,11 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
   useEffect(() => {
     if (bookKeys && bookKeys.length > 0) {
       const settings = useSettingsStore.getState().settings;
-      settings.lastOpenBooks = bookKeys.map((key) => key.split('-')[0]!);
-      saveSettings(envConfig, settings);
+      const lastOpenBooks = bookKeys.map((key) => key.split('-')[0]!);
+      if (settings.lastOpenBooks?.toString() !== lastOpenBooks.toString()) {
+        settings.lastOpenBooks = lastOpenBooks;
+        saveSettings(envConfig, settings);
+      }
     }
 
     let unlistenOnCloseWindow: Promise<UnlistenFn>;
@@ -131,6 +139,12 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
 
   const saveConfigAndCloseBook = async (bookKey: string) => {
     console.log('Closing book', bookKey);
+
+    const viewState = getViewState(bookKey);
+    if (viewState?.isPrimary && appService?.isDesktopApp) {
+      await clearDiscordPresence(appService);
+    }
+
     try {
       getView(bookKey)?.close();
       getView(bookKey)?.remove();
@@ -210,8 +224,13 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
 
   return (
     <div className='reader-content full-height flex'>
-      <SideBar onGoToLibrary={handleCloseBooksToLibrary} />
-      <BooksGrid bookKeys={bookKeys} onCloseBook={handleCloseBook} />
+      <SideBar />
+      <BooksGrid
+        bookKeys={bookKeys}
+        onCloseBook={handleCloseBook}
+        onGoToLibrary={handleCloseBooksToLibrary}
+      />
+      {isSettingsDialogOpen && <SettingsDialog bookKey={settingsDialogBookKey} />}
       <Notebook />
       {showDetailsBook && (
         <BookDetailModal

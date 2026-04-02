@@ -22,6 +22,7 @@ import { getStyles } from '@/utils/style';
 import { navigateToLogin } from '@/utils/nav';
 import { eventDispatcher } from '@/utils/event';
 import { getMaxInlineSize } from '@/utils/config';
+import { formatLocaleDateTime } from '@/utils/book';
 import { saveViewSettings } from '@/helpers/settings';
 import { tauriHandleToggleFullScreen } from '@/utils/window';
 import MenuItem from '@/components/MenuItem';
@@ -38,7 +39,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
   const { user } = useAuth();
   const { envConfig, appService } = useEnv();
   const { getConfig, getBookData } = useBookDataStore();
-  const { setSettingsDialogOpen } = useSettingsStore();
+  const { setSettingsDialogOpen, setSettingsDialogBookKey } = useSettingsStore();
   const { getView, getViewSettings, getViewState, setViewSettings } = useReaderStore();
   const config = getConfig(bookKey)!;
   const bookData = getBookData(bookKey)!;
@@ -47,6 +48,9 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
 
   const { themeMode, isDarkMode, setThemeMode } = useThemeStore();
   const [isScrolledMode, setScrolledMode] = useState(viewSettings!.scrolled);
+  const [isParagraphMode, setParagraphMode] = useState(
+    viewSettings?.paragraphMode?.enabled ?? false,
+  );
   const [zoomLevel, setZoomLevel] = useState(viewSettings!.zoomLevel!);
   const [zoomMode, setZoomMode] = useState(viewSettings!.zoomMode!);
   const [spreadMode, setSpreadMode] = useState(viewSettings!.spreadMode!);
@@ -59,9 +63,15 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
   const zoomOut = () => setZoomLevel((prev) => Math.max(prev - ZOOM_STEP, MIN_ZOOM_LEVEL));
   const resetZoom = () => setZoomLevel(100);
   const toggleScrolledMode = () => setScrolledMode(!isScrolledMode);
+  const toggleParagraphMode = () => {
+    setParagraphMode(!isParagraphMode);
+    eventDispatcher.dispatch('toggle-paragraph-mode', { bookKey });
+    setIsDropdownOpen?.(false);
+  };
 
   const openFontLayoutMenu = () => {
     setIsDropdownOpen?.(false);
+    setSettingsDialogBookKey(bookKey);
     setSettingsDialogOpen(true);
   };
 
@@ -84,6 +94,11 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
     }
   };
 
+  const handleStartRSVP = () => {
+    setIsDropdownOpen?.(false);
+    eventDispatcher.dispatch('rsvp-start', { bookKey });
+  };
+
   useEffect(() => {
     if (isScrolledMode === viewSettings!.scrolled) return;
     viewSettings!.scrolled = isScrolledMode;
@@ -98,6 +113,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
   }, [isScrolledMode]);
 
   useEffect(() => {
+    if (zoomLevel === viewSettings.zoomLevel) return;
     saveViewSettings(envConfig, bookKey, 'zoomLevel', zoomLevel, true, true);
     if (bookData.bookDoc?.rendition?.layout === 'pre-paginated') {
       getView(bookKey)?.renderer.setAttribute('scale-factor', zoomLevel);
@@ -146,8 +162,8 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
   return (
     <Menu
       className={clsx(
-        'view-menu dropdown-content dropdown-right no-triangle z-20 mt-1 border',
-        'bgcolor-base-200 border-base-200 shadow-2xl',
+        'view-menu dropdown-content dropdown-right no-triangle z-20 mt-1.5 border',
+        'bgcolor-base-200 shadow-2xl',
       )}
       style={{
         maxWidth: `${window.innerWidth - 40}px`,
@@ -178,7 +194,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
               )}
               onClick={resetZoom}
             >
-              {zoomLevel}%
+              {Math.round(zoomLevel)}%
             </button>
             <button
               title={_('Zoom In')}
@@ -258,7 +274,22 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
         shortcut='Shift+J'
         Icon={isScrolledMode ? MdCheck : undefined}
         onClick={toggleScrolledMode}
-        disabled={bookData.bookDoc?.rendition?.layout === 'pre-paginated'}
+      />
+
+      <hr aria-hidden='true' className='border-base-300 my-1' />
+
+      <MenuItem
+        label={_('Paragraph Mode')}
+        shortcut='Shift+P'
+        Icon={isParagraphMode ? MdCheck : undefined}
+        onClick={toggleParagraphMode}
+        disabled={bookData.isFixedLayout}
+      />
+
+      <MenuItem
+        label={_('Speed Reading Mode')}
+        onClick={handleStartRSVP}
+        disabled={bookData.isFixedLayout}
       />
 
       <hr aria-hidden='true' className='border-base-300 my-1' />
@@ -269,7 +300,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
             ? _('Sign in to Sync')
             : lastSyncTime
               ? _('Synced at {{time}}', {
-                  time: new Date(lastSyncTime).toLocaleString(),
+                  time: formatLocaleDateTime(lastSyncTime),
                 })
               : _('Never synced')
         }

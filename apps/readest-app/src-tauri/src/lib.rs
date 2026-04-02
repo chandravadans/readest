@@ -9,6 +9,9 @@ extern crate objc;
 #[cfg(target_os = "windows")]
 mod windows;
 
+#[cfg(target_os = "android")]
+mod android;
+
 use tauri::utils::config::BackgroundThrottlingPolicy;
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
@@ -19,6 +22,9 @@ use tauri_plugin_fs::FsExt;
 
 #[cfg(desktop)]
 use tauri::{Listener, Url};
+mod dir_scanner;
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+mod discord_rpc;
 #[cfg(target_os = "macos")]
 mod macos;
 mod transfer_file;
@@ -38,14 +44,14 @@ fn allow_file_in_scopes(app: &AppHandle, files: Vec<PathBuf>) {
     let asset_protocol_scope = app.asset_protocol_scope();
     for file in &files {
         if let Err(e) = fs_scope.allow_file(file) {
-            eprintln!("Failed to allow file in fs_scope: {e}");
+            log::error!("Failed to allow file in fs_scope: {e}");
         } else {
-            println!("Allowed file in fs_scope: {file:?}");
+            log::debug!("Allowed file in fs_scope: {file:?}");
         }
         if let Err(e) = asset_protocol_scope.allow_file(file) {
-            eprintln!("Failed to allow file in asset_protocol_scope: {e}");
+            log::error!("Failed to allow file in asset_protocol_scope: {e}");
         } else {
-            println!("Allowed file in asset_protocol_scope: {file:?}");
+            log::debug!("Allowed file in asset_protocol_scope: {file:?}");
         }
     }
 }
@@ -54,14 +60,14 @@ fn allow_dir_in_scopes(app: &AppHandle, dir: &PathBuf) {
     let fs_scope = app.fs_scope();
     let asset_protocol_scope = app.asset_protocol_scope();
     if let Err(e) = fs_scope.allow_directory(dir, true) {
-        eprintln!("Failed to allow directory in fs_scope: {e}");
+        log::error!("Failed to allow directory in fs_scope: {e}");
     } else {
-        println!("Allowed directory in fs_scope: {dir:?}");
+        log::info!("Allowed directory in fs_scope: {dir:?}");
     }
     if let Err(e) = asset_protocol_scope.allow_directory(dir, true) {
-        eprintln!("Failed to allow directory in asset_protocol_scope: {e}");
+        log::error!("Failed to allow directory in asset_protocol_scope: {e}");
     } else {
-        println!("Allowed directory in asset_protocol_scope: {dir:?}");
+        log::info!("Allowed directory in asset_protocol_scope: {dir:?}");
     }
 }
 
@@ -144,6 +150,13 @@ struct SingleInstancePayload {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .level_for("tracing", log::LevelFilter::Warn)
+                .level_for("tantivy", log::LevelFilter::Warn)
+                .build(),
+        )
         .plugin(tauri_plugin_websocket::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_oauth::init())
@@ -153,12 +166,17 @@ pub fn run() {
             upload_file,
             get_environment_variable,
             get_executable_dir,
+            dir_scanner::read_dir,
             #[cfg(target_os = "macos")]
             macos::safari_auth::auth_with_safari,
             #[cfg(target_os = "macos")]
             macos::apple_auth::start_apple_sign_in,
             #[cfg(target_os = "macos")]
             macos::traffic_light::set_traffic_lights,
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            discord_rpc::update_book_presence,
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            discord_rpc::clear_book_presence,
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_persisted_scope::init())
@@ -167,22 +185,30 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_sharekit::init())
+        .plugin(tauri_plugin_device_info::init())
+        .plugin(tauri_plugin_turso::init())
         .plugin(tauri_plugin_native_bridge::init())
         .plugin(tauri_plugin_native_tts::init());
 
     #[cfg(desktop)]
-    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
-        let _ = app
-            .get_webview_window("main")
-            .expect("no main window")
-            .set_focus();
-        let files = get_files_from_argv(argv.clone());
-        if !files.is_empty() {
-            allow_file_in_scopes(app, files.clone());
-        }
-        app.emit("single-instance", SingleInstancePayload { args: argv, cwd })
-            .unwrap();
-    }));
+    let builder = builder.plugin(
+        tauri_plugin_single_instance::Builder::new()
+            .callback(move |app, argv, cwd| {
+                let _ = app
+                    .get_webview_window("main")
+                    .expect("no main window")
+                    .set_focus();
+                let files = get_files_from_argv(argv.clone());
+                if !files.is_empty() {
+                    allow_file_in_scopes(app, files.clone());
+                }
+                app.emit("single-instance", SingleInstancePayload { args: argv, cwd })
+                    .unwrap();
+            })
+            .dbus_id("com.bilingify.readest".to_owned())
+            .build(),
+    );
 
     let builder = builder.plugin(tauri_plugin_deep_link::init());
 
@@ -204,8 +230,26 @@ pub fn run() {
     #[cfg(any(target_os = "ios", target_os = "android"))]
     let builder = builder.plugin(tauri_plugin_haptics::init());
 
+    #[cfg(feature = "webdriver")]
+    let builder = builder.plugin(tauri_plugin_webdriver::init());
+
     builder
         .setup(|#[allow(unused_variables)] app| {
+            // When running with the webdriver feature (E2E/integration tests),
+            // grant all default permissions to remote URLs (http://127.0.0.1:*)
+            // so that Vitest browser-mode tests can call plugin commands.
+            #[cfg(feature = "webdriver")]
+            {
+                use tauri::Manager;
+                app.add_capability(include_str!("../capabilities-extra/webdriver.json"))?;
+            }
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            {
+                use std::sync::{Arc, Mutex};
+                let discord_client = Arc::new(Mutex::new(discord_rpc::DiscordRpcClient::new()));
+                app.manage(discord_client);
+            }
+
             #[cfg(desktop)]
             {
                 let files = get_files_from_argv(std::env::args().collect());
@@ -229,75 +273,83 @@ pub fn run() {
                 allow_dir_in_scopes(app, path);
             });
 
-            #[cfg(desktop)]
-            {
-                app.handle().plugin(tauri_plugin_cli::init())?;
-
-                let app_handle = app.handle().clone();
-                app.listen("window-ready", move |_| {
-                    let webview = app_handle.get_webview_window("main").unwrap();
-                    webview
-                        .eval("window.__READEST_CLI_ACCESS = true;")
-                        .expect("Failed to set cli access config");
-
-                    #[cfg(target_os = "linux")]
-                    {
-                        let is_appimage = std::env::var("APPIMAGE").is_ok()
-                            || std::env::current_exe()
-                                .map(|path| path.to_string_lossy().contains("/tmp/.mount_"))
-                                .unwrap_or(false);
-
-                        let script =
-                            format!("window.__READEST_UPDATER_DISABLED = {};", !is_appimage);
-                        webview
-                            .eval(&script)
-                            .expect("Failed to set updater disabled config");
-                    }
-                });
-            }
-
             #[cfg(any(target_os = "windows", target_os = "linux"))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 let _ = app.deep_link().register_all();
             }
 
-            if let Err(e) = app.handle().plugin(
-                tauri_plugin_log::Builder::default()
-                    .level(log::LevelFilter::Info)
-                    .build(),
-            ) {
-                eprintln!("Failed to initialize tauri_plugin_log: {e}");
-            };
+            #[cfg(desktop)]
+            {
+                app.handle().plugin(tauri_plugin_cli::init())?;
+            }
+
+            // Check for e-ink device on Android before building the window
+            #[cfg(target_os = "android")]
+            let is_eink = android::is_eink_device();
+            #[cfg(not(target_os = "android"))]
+            let is_eink = false;
+
+            #[cfg(desktop)]
+            let cli_access = true;
+            #[cfg(not(desktop))]
+            let cli_access = false;
+
+            #[cfg(target_os = "linux")]
+            let is_appimage = std::env::var("APPIMAGE").is_ok()
+                || std::env::current_exe()
+                    .map(|path| path.to_string_lossy().contains("/tmp/.mount_"))
+                    .unwrap_or(false);
+            #[cfg(not(target_os = "linux"))]
+            let is_appimage = false;
+
+            #[cfg(desktop)]
+            let updater_disabled = std::env::var("READEST_DISABLE_UPDATER").is_ok();
+            #[cfg(not(desktop))]
+            let updater_disabled = false;
+
+            let init_script = format!(
+                r#"
+                    if ({is_eink}) window.__READEST_IS_EINK = true;
+                    if ({cli_access}) window.__READEST_CLI_ACCESS = true;
+                    if ({is_appimage}) window.__READEST_IS_APPIMAGE = true;
+                    if ({updater_disabled}) window.__READEST_UPDATER_DISABLED = true;
+                    window.addEventListener('DOMContentLoaded', function() {{
+                        document.documentElement.classList.add('edge-to-edge');
+                        const isTauriLocal = window.location.protocol === 'tauri:' ||
+                                            window.location.protocol === 'about:' ||
+                                            window.location.hostname === 'tauri.localhost';
+                        const needsSafeArea = !isTauriLocal;
+                        if (needsSafeArea && !document.getElementById('safe-area-style')) {{
+                            const style = document.createElement('style');
+                            style.id = 'safe-area-style';
+                            style.textContent = `
+                                body {{
+                                    padding-top: env(safe-area-inset-top) !important;
+                                    padding-bottom: env(safe-area-inset-bottom) !important;
+                                    padding-left: env(safe-area-inset-left) !important;
+                                    padding-right: env(safe-area-inset-right) !important;
+                                }}
+                            `;
+                            document.head.appendChild(style);
+                        }}
+                    }});
+                "#,
+                is_eink = is_eink,
+                cli_access = cli_access,
+                is_appimage = is_appimage,
+                updater_disabled = updater_disabled
+            );
 
             let app_handle = app.handle().clone();
             let win_builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
                 .background_throttling(BackgroundThrottlingPolicy::Disabled)
-                .background_color(tauri::window::Color(50, 49, 48, 255))
-                .initialization_script(
-                    r#"
-                        window.addEventListener('DOMContentLoaded', function() {
-                            document.documentElement.classList.add('edge-to-edge');
-                            const isTauriLocal = window.location.protocol === 'tauri:' ||
-                                                window.location.protocol === 'about:' ||
-                                                window.location.hostname === 'tauri.localhost';
-                            const needsSafeArea = !isTauriLocal;
-                            if (needsSafeArea && !document.getElementById('safe-area-style')) {
-                                const style = document.createElement('style');
-                                style.id = 'safe-area-style';
-                                style.textContent = `
-                                    body {
-                                        padding-top: env(safe-area-inset-top) !important;
-                                        padding-bottom: env(safe-area-inset-bottom) !important;
-                                        padding-left: env(safe-area-inset-left) !important;
-                                        padding-right: env(safe-area-inset-right) !important;
-                                    }
-                                `;
-                                document.head.appendChild(style);
-                            }
-                        });
-                    "#,
-                )
+                .background_color(if is_eink {
+                    tauri::window::Color(255, 255, 255, 255)
+                } else {
+                    tauri::window::Color(50, 49, 48, 255)
+                })
+                .initialization_script(&init_script)
                 .on_navigation(move |url| {
                     if url.scheme() == "alipays" || url.scheme() == "alipay" {
                         let url_str = url.as_str().to_string();

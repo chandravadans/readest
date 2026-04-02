@@ -7,7 +7,7 @@ import { transformBookConfigToDB } from '@/utils/transform';
 import { transformBookNoteToDB } from '@/utils/transform';
 import { transformBookToDB } from '@/utils/transform';
 import { runMiddleware, corsAllMethods } from '@/utils/cors';
-import { SyncData, SyncResult, SyncType } from '@/libs/sync';
+import { SyncData, SyncRecord, SyncResult, SyncType } from '@/libs/sync';
 import { validateUserAndToken } from '@/utils/access';
 import { DBBook, DBBookConfig } from '@/types/records';
 
@@ -60,21 +60,44 @@ export async function GET(req: NextRequest) {
     };
 
     const queryTables = async (table: TableName, dedupeKeys?: (keyof BookDataRecord)[]) => {
-      let query = supabase.from(table).select('*').eq('user_id', user.id);
-      if (bookParam && metaHashParam) {
-        query.or(`book_hash.eq.${bookParam},meta_hash.eq.${metaHashParam}`);
-      } else if (bookParam) {
-        query.eq('book_hash', bookParam);
-      } else if (metaHashParam) {
-        query.eq('meta_hash', metaHashParam);
+      const PAGE_SIZE = 1000;
+      let allRecords: SyncRecord[] = [];
+      let offset = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        let query = supabase
+          .from(table)
+          .select('*')
+          .eq('user_id', user.id)
+          .range(offset, offset + PAGE_SIZE - 1);
+
+        if (bookParam && metaHashParam) {
+          query = query.or(`book_hash.eq.${bookParam},meta_hash.eq.${metaHashParam}`);
+        } else if (bookParam) {
+          query = query.eq('book_hash', bookParam);
+        } else if (metaHashParam) {
+          query = query.eq('meta_hash', metaHashParam);
+        }
+
+        query = query.or(`updated_at.gt.${sinceIso},deleted_at.gt.${sinceIso}`);
+        query = query.order('updated_at', { ascending: false });
+
+        console.log('Querying table:', table, 'since:', sinceIso, 'offset:', offset);
+
+        const { data, error } = await query;
+        if (error) throw { table, error } as DBError;
+
+        if (data && data.length > 0) {
+          allRecords = allRecords.concat(data);
+          offset += PAGE_SIZE;
+          hasMore = data.length === PAGE_SIZE;
+        } else {
+          hasMore = false;
+        }
       }
 
-      query = query.or(`updated_at.gt.${sinceIso},deleted_at.gt.${sinceIso}`);
-      query = query.order('updated_at', { ascending: false });
-      console.log('Querying table:', table, 'since:', sinceIso);
-      const { data, error } = await query;
-      if (error) throw { table, error } as DBError;
-      let records = data;
+      let records = allRecords;
       if (dedupeKeys && dedupeKeys.length > 0) {
         const seen = new Set<string>();
         records = records.filter((rec) => {
@@ -95,6 +118,26 @@ export async function GET(req: NextRequest) {
 
     if (!typeParam || typeParam === 'books') {
       await queryTables('books').catch((err) => (errors['books'] = err));
+      // TODO: Remove this hotfix for the initial race condition for books sync
+      if (results.books?.length === 0 && since.getTime() < 1000) {
+        const dummyHash = '00000000000000000000000000000000';
+        const now = Date.now();
+        results.books.push({
+          user_id: user.id,
+          id: dummyHash,
+          book_hash: dummyHash,
+          deleted_at: now,
+          updated_at: now,
+
+          hash: dummyHash,
+          title: 'Dummy Book',
+          format: 'EPUB',
+          author: '',
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: now,
+        });
+      }
     }
     if (!typeParam || typeParam === 'configs') {
       await queryTables('book_configs').catch((err) => (errors['book_configs'] = err));
@@ -167,8 +210,8 @@ export async function POST(req: NextRequest) {
       // Fetch existing records for this batch
       const orConditions = matchConditions
         .map((cond) => {
-          const parts = Object.entries(cond).map(([key, val]) => `and(${key}.eq.${val})`);
-          return parts.join(',');
+          const parts = Object.entries(cond).map(([key, val]) => `${key}.eq.${val}`);
+          return `and(${parts.join(',')})`;
         })
         .join(',');
 

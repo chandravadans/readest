@@ -1,40 +1,43 @@
 import clsx from 'clsx';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { useEnv } from '@/context/EnvContext';
 import { useThemeStore } from '@/store/themeStore';
-import { useSettingsStore } from '@/store/settingsStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getGridTemplate, getInsetEdges } from '@/utils/grid';
 import { getViewInsets } from '@/utils/insets';
-import SettingsDialog from '@/components/settings/SettingsDialog';
+import SearchResultsNav from './sidebar/SearchResultsNav';
+import BooknotesNav from './sidebar/BooknotesNav';
 import FoliateViewer from './FoliateViewer';
 import SectionInfo from './SectionInfo';
 import HeaderBar from './HeaderBar';
+import PageNavigationButtons from './PageNavigationButtons';
 import FooterBar from './footerbar/FooterBar';
-import ProgressInfoView from './ProgressInfo';
+import ProgressBar from './ProgressBar';
 import Ribbon from './Ribbon';
 import Annotator from './annotator/Annotator';
 import FootnotePopup from './FootnotePopup';
 import HintInfo from './HintInfo';
+import ReadingRuler from './ReadingRuler';
 import DoubleBorder from './DoubleBorder';
 
 interface BooksGridProps {
   bookKeys: string[];
   onCloseBook: (bookKey: string) => void;
+  onGoToLibrary: () => void;
 }
 
-const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook }) => {
+const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook, onGoToLibrary }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
   const { getConfig, getBookData } = useBookDataStore();
   const { getProgress, getViewState, getViewSettings } = useReaderStore();
   const { setGridInsets, hoveredBookKey } = useReaderStore();
   const { sideBarBookKey } = useSidebarStore();
-  const { isSettingsDialogOpen } = useSettingsStore();
+  const [dropdownOpenBook, setDropdownOpenBook] = useState<string>('');
 
   const { safeAreaInsets: screenInsets } = useThemeStore();
   const aspectRatio = window.innerWidth / window.innerHeight;
@@ -90,7 +93,7 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook }) => {
         const { book, bookDoc } = bookData || {};
         if (!book || !config || !bookDoc || !viewSettings || !viewState) return null;
 
-        const { section, pageinfo, timeinfo, sectionLabel } = progress || {};
+        const { section, pageinfo, sectionLabel } = progress || {};
         const isBookmarked = viewState.ribbonVisible;
         const viewerKey = viewState.viewerKey;
         const horizontalGapPercent = viewSettings.gapPercent;
@@ -118,11 +121,18 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook }) => {
             {isBookmarked && !hoveredBookKey && <Ribbon width={`${horizontalGapPercent}%`} />}
             <HeaderBar
               bookKey={bookKey}
+              gridInsets={gridInsets}
+              screenInsets={screenInsets}
               bookTitle={book.title}
               isTopLeft={index === 0}
               isHoveredAnim={bookKeys.length > 2}
               onCloseBook={onCloseBook}
-              gridInsets={gridInsets}
+              onGoToLibrary={onGoToLibrary}
+              onDropdownOpenChange={(isOpen) => setDropdownOpenBook(isOpen ? bookKey : '')}
+            />
+            <PageNavigationButtons
+              bookKey={bookKey}
+              isDropdownOpen={dropdownOpenBook === bookKey}
             />
             <FoliateViewer
               key={viewerKey}
@@ -186,18 +196,31 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook }) => {
               contentInsets={contentInsets}
               gridInsets={gridInsets}
             />
-            {showFooter && (
-              <ProgressInfoView
+            {viewSettings.readingRulerEnabled && viewState?.inited && (
+              <ReadingRuler
                 bookKey={bookKey}
-                section={section}
-                pageinfo={pageinfo}
-                timeinfo={timeinfo}
+                isVertical={viewSettings.vertical}
+                rtl={viewSettings.rtl}
+                lines={viewSettings.readingRulerLines}
+                position={viewSettings.readingRulerPosition}
+                opacity={viewSettings.readingRulerOpacity}
+                color={viewSettings.readingRulerColor}
+                bookFormat={book.format}
+                viewSettings={viewSettings}
+                gridInsets={gridInsets}
+              />
+            )}
+            {showFooter && (
+              <ProgressBar
+                bookKey={bookKey}
                 horizontalGap={horizontalGapPercent}
                 contentInsets={contentInsets}
                 gridInsets={gridInsets}
               />
             )}
             <Annotator bookKey={bookKey} />
+            <SearchResultsNav bookKey={bookKey} gridInsets={gridInsets} />
+            <BooknotesNav bookKey={bookKey} gridInsets={gridInsets} toc={bookDoc.toc || []} />
             <FootnotePopup bookKey={bookKey} bookDoc={bookDoc} />
             <FooterBar
               bookKey={bookKey}
@@ -207,7 +230,6 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook }) => {
               isHoveredAnim={false}
               gridInsets={gridInsets}
             />
-            {isSettingsDialogOpen && <SettingsDialog bookKey={bookKey} />}
           </div>
         );
       })}

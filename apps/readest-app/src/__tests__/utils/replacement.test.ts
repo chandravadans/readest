@@ -99,6 +99,7 @@ describe('proofreadTransformer', () => {
       viewSettings,
       userLocale: 'en',
       content,
+      isFixedLayout: false,
       sectionHref,
       transformers: ['proofread'],
     };
@@ -208,6 +209,60 @@ describe('proofreadTransformer', () => {
 
       expect(result).toContain('dog');
       expect(result).toContain('category'); // Should not replace "cat" in "category"
+    });
+
+    test('should replace CJK characters correctly', async () => {
+      const rules: ProofreadRule[] = [
+        {
+          id: '1',
+          scope: 'book',
+          pattern: '猫',
+          replacement: '狗',
+          enabled: true,
+          isRegex: false,
+          caseSensitive: true,
+          order: 1,
+          wholeWord: true,
+        },
+      ];
+      const ctx = createMockContext(rules, '<p>我有一只猫。</p>');
+      const result = await proofreadTransformer.transform(ctx);
+
+      expect(result).toContain('我有一只狗。');
+      expect(result).not.toContain('猫');
+    });
+
+    test('should replace multiple different words correctly', async () => {
+      const rules: ProofreadRule[] = [
+        {
+          id: '1',
+          scope: 'book',
+          pattern: '猫',
+          replacement: '狗',
+          enabled: true,
+          isRegex: false,
+          caseSensitive: true,
+          order: 1,
+          wholeWord: true,
+        },
+        {
+          id: '2',
+          scope: 'book',
+          pattern: '我',
+          replacement: '你',
+          enabled: true,
+          isRegex: false,
+          caseSensitive: true,
+          order: 2,
+          wholeWord: true,
+        },
+      ];
+      const ctx = createMockContext(rules, '<p>我有一只猫。</p>');
+      const result = await proofreadTransformer.transform(ctx);
+
+      expect(result).toContain('你有一只狗。');
+      expect(result).not.toContain('我');
+      expect(result).not.toContain('猫');
     });
   });
 
@@ -1048,8 +1103,7 @@ describe('proofreadTransformer', () => {
           enabled: true,
           isRegex: false,
           caseSensitive: true,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          order: undefined as any,
+          order: 0,
           wholeWord: true,
         },
       ];
