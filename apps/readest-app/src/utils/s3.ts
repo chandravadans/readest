@@ -51,7 +51,7 @@ export const s3Storage = {
   ) => {
     const signableHeaders = new Set<string>();
     signableHeaders.add('host');
-    console.log('Content length:' + contentLength)
+    console.log('Content length:' + contentLength);
     const putCommand = new PutObjectCommand({
       Bucket: bucketName,
       Key: fileKey,
