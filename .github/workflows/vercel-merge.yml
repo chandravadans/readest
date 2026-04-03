@@ -1,8 +1,6 @@
-name: Deploy to vercel on merge
+name: Deploy to vercel on merge (DISABLED)
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 permissions:
   contents: write
   deployments: write
