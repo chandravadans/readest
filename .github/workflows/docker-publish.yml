@@ -19,9 +19,12 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-
+    permissions:
+      packages: write
+      contents: read
+      id-token: write
+      
     steps:
-
       - name: Checkout repository (with submodules)
         uses: actions/checkout@v4
         with:
@@ -46,9 +49,6 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=${{ inputs.tag || 'latest' }}
-
-
-
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
