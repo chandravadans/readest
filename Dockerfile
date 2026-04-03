@@ -42,11 +42,11 @@ FROM base AS production
 ENV NODE_ENV=production
 WORKDIR /app
 
-COPY --from=build /app/apps/readest-app/package.json /app/apps/readest-app/package.json
-COPY --from=build /app/package.json /app/package.json
-COPY --from=build /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
-COPY --from=build /app/apps/readest-app/.next /app/apps/readest-app/.next
-COPY --from=build /app/apps/readest-app/public /app/apps/readest-app/public
+COPY --from=base /app/apps/readest-app/package.json /app/apps/readest-app/package.json
+COPY --from=base /app/package.json /app/package.json
+COPY --from=base /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
+COPY --from=base /app/apps/readest-app/.next /app/apps/readest-app/.next
+COPY --from=base /app/apps/readest-app/public /app/apps/readest-app/public
 
 ENV CI="true"
 RUN pnpm fetch --prod && pnpm install -r --offline --prod && \
