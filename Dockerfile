@@ -28,7 +28,7 @@ RUN env_source=/app/apps/readest-app/.env.local.example; \
 
 ENV CI="true"
 RUN pnpm install
-RUN pnpm --filter=@readest/readest-app setup-pdfjs && \
+RUN pnpm --filter=@readest/readest-app setup-vendors && \
 	pnpm --filter=@readest/readest-app build-web
 
 # Replace placeholder in built JS files with runtime env variable
