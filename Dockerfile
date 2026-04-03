@@ -32,7 +32,7 @@ RUN pnpm --filter=@readest/readest-app setup-vendors && \
 	pnpm --filter=@readest/readest-app build-web
 
 # Replace placeholder in built JS files with runtime env variable
-RUN find /app/apps/readest-app/.next -name "*.js" -exec sed -i "s|https://your-supabase-url.com|\$NEXT_PUBLIC_SUPABASE_URL|g" {} +
+RUN find /app/apps/readest-app/.next -name "*.js" -type f -exec sed -i "s|https://your-supabase-url.com|\$NEXT_PUBLIC_SUPABASE_URL|g" {} +
 
 RUN rm -rf /app/apps/readest-app/.next/cache && \
 	pnpm --filter=@readest/readest-app install dotenv-cli @next/bundle-analyzer -P
