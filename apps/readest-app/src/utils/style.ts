@@ -128,6 +128,7 @@ const getColorStyles = (
   isEink: boolean,
 ) => {
   const { bg, fg, primary, isDarkMode } = themeCode;
+  const hasBackgroundTexture = !!backgroundTextureId && backgroundTextureId !== 'none';
   const colorStyles = `
     html {
       --bg-texture-id: ${backgroundTextureId};
@@ -153,9 +154,9 @@ const getColorStyles = (
     }
     section, aside, blockquote, article, nav, header, footer, main, figure,
     div, p, font, h1, h2, h3, h4, h5, h6, li, span {
-      ${overrideColor ? `background-color: ${bg} !important;` : ''}
-      ${overrideColor ? `color: ${fg} !important;` : ''}
-      ${overrideColor ? `border-color: ${fg} !important;` : ''}
+      ${overrideColor && !hasBackgroundTexture ? `background-color: ${bg} !important;` : ''}
+      ${overrideColor && !hasBackgroundTexture ? `color: ${fg} !important;` : ''}
+      ${overrideColor && !hasBackgroundTexture ? `border-color: ${fg} !important;` : ''}
     }
     pre, span { /* inline code blocks */
       ${overrideColor ? `background-color: ${bg} !important;` : ''}
@@ -724,25 +725,17 @@ export const transformStylesheet = (css: string, vw: number, vh: number, vertica
       if (!/display\s*:/.test(block)) {
         block = block.replace(/}$/, ' display: flow-root !important; }');
       }
-      if (!/width\s*:/.test(block) && directions.includes('left') && directions.includes('right')) {
+      if (directions.includes('left') && directions.includes('right')) {
         block = block
-          .replace(
-            /}$/,
-            ' width: calc(var(--_max-width) + var(--page-margin-left) + var(--page-margin-right)) !important; }',
-          )
-          .replace(/}$/, ' max-width: calc(var(--full-width) * 1px) !important; }');
+          .replace(/}$/, ' width: calc(var(--available-width) * 1px) !important; }')
+          .replace(/}$/, ' min-width: calc(var(--available-width) * 1px) !important; }')
+          .replace(/}$/, ' max-width: calc(var(--available-width) * 1px) !important; }');
       }
-      if (
-        !/height\s*:/.test(block) &&
-        directions.includes('top') &&
-        directions.includes('bottom')
-      ) {
+      if (directions.includes('top') && directions.includes('bottom')) {
         block = block
-          .replace(
-            /}$/,
-            ' height: calc(100% + var(--page-margin-top) + var(--page-margin-bottom)) !important; }',
-          )
-          .replace(/}$/, ' max-height: calc(var(--full-height) * 1px) !important; }');
+          .replace(/}$/, ' height: calc(var(--available-height) * 1px) !important; }')
+          .replace(/}$/, ' min-height: calc(var(--available-height) * 1px) !important; }')
+          .replace(/}$/, ' max-height: calc(var(--available-height) * 1px) !important; }');
       }
     }
     return selector + block;
@@ -761,6 +754,20 @@ export const transformStylesheet = (css: string, vw: number, vh: number, vertica
       }
     }
     return selector + block;
+  });
+
+  // clip hardcoded pixel widths to available width when they exceed viewport
+  css = css.replace(ruleRegex, (match, selector, block) => {
+    const widthMatch = /(?:^|[^a-z-])width\s*:\s*(\d+(?:\.\d+)?)px/.exec(block);
+    const pxWidth = widthMatch ? parseFloat(widthMatch[1] ?? '0') : 0;
+    if (pxWidth > vw && !/max-width\s*:/.test(block)) {
+      block = block.replace(
+        /}$/,
+        ' max-width: calc(var(--available-width) * 1px); box-sizing: border-box; }',
+      );
+      return selector + block;
+    }
+    return match;
   });
 
   // replace absolute font sizes with rem units

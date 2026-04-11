@@ -16,6 +16,7 @@ import {
   ViewSettings,
 } from '@/types/book';
 import {
+  HardcoverSettings,
   KOSyncSettings,
   LibraryGroupByType,
   LibrarySortByType,
@@ -73,6 +74,12 @@ export const DEFAULT_READWISE_SETTINGS = {
   lastSyncedAt: 0,
 } as ReadwiseSettings;
 
+export const DEFAULT_HARDCOVER_SETTINGS = {
+  enabled: false,
+  accessToken: '',
+  lastSyncedAt: 0,
+} as HardcoverSettings;
+
 export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
   keepLogin: false,
   autoUpload: true,
@@ -103,6 +110,7 @@ export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
 
   kosync: DEFAULT_KOSYNC_SETTINGS,
   readwise: DEFAULT_READWISE_SETTINGS,
+  hardcover: DEFAULT_HARDCOVER_SETTINGS,
   aiSettings: DEFAULT_AI_SETTINGS,
 
   lastSyncedAtBooks: 0,
@@ -149,6 +157,7 @@ export const DEFAULT_READSETTINGS: ReadSettings = {
   },
   customHighlightColors: HIGHLIGHT_COLOR_HEX,
   userHighlightColors: [],
+  defaultHighlightLabels: {},
   customTtsHighlightColors: [],
 };
 
@@ -210,7 +219,6 @@ export const DEFAULT_BOOK_STYLE: BookStyle = {
   textIndent: 0,
   fullJustification: true,
   hyphenation: true,
-  invertImgColorInDark: false,
   theme: 'light',
   overrideFont: false,
   overrideLayout: false,
@@ -227,6 +235,8 @@ export const DEFAULT_BOOK_STYLE: BookStyle = {
   zoomMode: 'fit-page',
   spreadMode: 'auto',
   keepCoverSpread: true,
+  invertImgColorInDark: false,
+  applyThemeToPDF: false,
 };
 
 export const DEFAULT_MOBILE_VIEW_SETTINGS: Partial<ViewSettings> = {
@@ -826,6 +836,7 @@ export const TRANSLATED_LANGS = {
   'zh-CN': '简体中文',
   'zh-TW': '正體中文',
   ro: 'Română',
+  hu: 'Magyar',
 };
 
 export const TRANSLATOR_LANGS: Record<string, string> = {
@@ -835,7 +846,6 @@ export const TRANSLATOR_LANGS: Record<string, string> = {
   fi: 'Suomi',
   da: 'Dansk',
   cs: 'Čeština',
-  hu: 'Magyar',
   km: 'ខ្មែរ',
   ro: 'Română',
   bg: 'Български',
